@@ -1,0 +1,22 @@
+# secrets
+.env
+backend/.env
+
+# virtualenv
+.venv/
+backend/.venv/
+
+# python cache
+__pycache__/
+*.pyc
+
+# alembic caches
+backend/alembic/versions/__pycache__/
+backend/alembic/__pycache__/
+
+# editor
+.vscode/
+.idea/
+
+# OS
+.DS_Store

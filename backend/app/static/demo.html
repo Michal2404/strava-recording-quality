@@ -9,45 +9,162 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
     <style>
+        :root {
+            --bg: #0b0f14;
+            --panel: #111826;
+            --text: #e6edf3;
+            --muted: #9aa4b2;
+            --border: rgba(255, 255, 255, 0.08);
+            --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        }
+
         body {
             margin: 0;
-            font-family: sans-serif;
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
             display: flex;
+            height: 100vh;
+            background: var(--bg);
+            color: var(--text);
         }
 
         #map {
             height: 100vh;
-            width: 70%;
+            width: 72%;
         }
 
         #panel {
-            width: 30%;
-            padding: 16px;
+            width: 28%;
+            padding: 18px;
             box-sizing: border-box;
+            background: linear-gradient(180deg, #0b0f14, #0b0f14);
+            overflow: auto;
         }
 
-        h2 {
-            margin-top: 0;
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 14px;
+            box-shadow: var(--shadow);
+        }
+
+        .title {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .title h2 {
+            margin: 0;
+            font-size: 18px;
+            letter-spacing: 0.2px;
+        }
+
+        .pill {
+            font-size: 12px;
+            color: var(--muted);
+            border: 1px solid var(--border);
+            padding: 4px 8px;
+            border-radius: 999px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 12px 0 14px;
+        }
+
+        .metric {
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .metric .k {
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 6px;
+        }
+
+        .metric .v {
+            font-size: 18px;
+            font-weight: 650;
         }
 
         pre {
-            background: #f5f5f5;
-            padding: 8px;
+            margin: 0;
+            border-radius: 12px;
+            padding: 10px;
+            overflow: auto;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+            color: #d7dee6;
+            font-size: 12px;
+            line-height: 1.35;
+        }
+
+        .hint {
+            margin-top: 10px;
+            font-size: 12px;
+            color: var(--muted);
         }
     </style>
+
 </head>
 
 <body>
 
     <div id="map"></div>
     <div id="panel">
-        <h2>Activity Quality</h2>
-        <pre id="quality">Loading...</pre>
+        <div class="card">
+            <div class="title">
+                <h2>Activity Quality</h2>
+                <span class="pill" id="subtitle">Loading…</span>
+            </div>
+
+            <div class="grid">
+                <div class="metric">
+                    <div class="k">Distance (GPS)</div>
+                    <div class="v" id="m_dist">—</div>
+                </div>
+                <div class="metric">
+                    <div class="k">Duration</div>
+                    <div class="v" id="m_dur">—</div>
+                </div>
+                <div class="metric">
+                    <div class="k">Max speed</div>
+                    <div class="v" id="m_speed">—</div>
+                </div>
+                <div class="metric">
+                    <div class="k">Spikes</div>
+                    <div class="v" id="m_spikes">—</div>
+                </div>
+                <div class="metric">
+                    <div class="k">Stops</div>
+                    <div class="v" id="m_stops">—</div>
+                </div>
+                <div class="metric">
+                    <div class="k">Jitter</div>
+                    <div class="v" id="m_jitter">—</div>
+                </div>
+            </div>
+
+            <pre id="quality">Loading...</pre>
+            <div class="hint">Tip: open with <code>?id=11</code> to pick an activity.</div>
+        </div>
     </div>
+
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        const activityId = 5; // change if needed
+        const params = new URLSearchParams(window.location.search);
+        const activityId = Number(params.get("id") || 2); // default to 2
+        console.log("Using activityId:", activityId);
+
 
         const map = L.map('map').setView([52.52, 13.29], 13);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -64,9 +181,21 @@
         fetch(`/activities/${activityId}/quality`)
             .then(r => r.json())
             .then(q => {
-                document.getElementById('quality').textContent =
-                    JSON.stringify(q, null, 2);
+                document.getElementById('quality').textContent = JSON.stringify(q, null, 2);
+                document.getElementById('subtitle').textContent = `${q.sport_type} • #${q.activity_id}`;
+
+                const km = (q.distance_m_gps / 1000).toFixed(2);
+                const mins = Math.floor(q.duration_s / 60);
+                const secs = q.duration_s % 60;
+
+                document.getElementById('m_dist').textContent = `${km} km`;
+                document.getElementById('m_dur').textContent = `${mins}:${String(secs).padStart(2, '0')}`;
+                document.getElementById('m_speed').textContent = `${q.max_speed_kmh.toFixed(1)} km/h`;
+                document.getElementById('m_spikes').textContent = `${q.spike_count}`;
+                document.getElementById('m_stops').textContent = `${q.stop_segments}`;
+                document.getElementById('m_jitter').textContent = `${q.jitter_score.toFixed(2)}`;
             });
+
     </script>
 
 </body>

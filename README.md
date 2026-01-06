@@ -7,6 +7,9 @@ It ingests raw GPS streams from Strava activities, stores them in **PostgreSQL +
 
 The project is intentionally small but production-oriented and mirrors problems commonly encountered in live activity tracking, mapping, and applied ML systems.
 
+
+![Demo screenshot](docs/demo.png)
+
 ---
 
 ## Why this project
