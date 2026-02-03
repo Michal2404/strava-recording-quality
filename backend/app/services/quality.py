@@ -17,7 +17,7 @@ class QualityReport:
 
 
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    # fast + good enough for this use
+    """Approximate distance in meters using the haversine formula."""
     from math import radians, sin, cos, asin, sqrt
 
     R = 6371000.0
@@ -30,9 +30,9 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 def compute_quality(
     latlons: List[Tuple[float, float]],
     times: List[int],
-    spike_speed_mps: float = 12.0,   # ~43 km/h; flags bad GPS for runs; good starting threshold
-    stop_speed_mps: float = 0.6,     # below this => likely stop
-    stop_min_duration_s: int = 10,   # ignore tiny pauses
+    spike_speed_mps: float = 12.0,   # ~43 km/h; default spike threshold for running
+    stop_speed_mps: float = 0.6,     # below this is treated as stopped
+    stop_min_duration_s: int = 10,   # minimum duration to count a stop
 ) -> QualityReport:
     n = len(latlons)
     if n < 2:
@@ -51,13 +51,13 @@ def compute_quality(
     max_speed = 0.0
     spike_count = 0
 
-    # stop detection (simple)
+    # Stop detection state.
     stopped_time = 0
     stop_segments = 0
     in_stop = False
     current_stop_time = 0
 
-    # jitter proxy: std of speed changes (rough)
+    # Collect speeds for jitter metric.
     speeds = []
 
     for i in range(1, n):
@@ -78,7 +78,7 @@ def compute_quality(
         if v >= spike_speed_mps:
             spike_count += 1
 
-        # stop logic
+        # Stop state machine.
         if v <= stop_speed_mps:
             current_stop_time += dt
             if not in_stop:
@@ -91,14 +91,14 @@ def compute_quality(
                 current_stop_time = 0
                 in_stop = False
 
-    # close trailing stop
+    # Finalize trailing stop segment.
     if in_stop and current_stop_time >= stop_min_duration_s:
         stopped_time += current_stop_time
         stop_segments += 1
 
     duration = max(times) - min(times) if times else 0
 
-    # jitter score: mean absolute diff of consecutive speeds (scaled)
+    # Jitter score: mean absolute delta of consecutive speeds.
     jitter = 0.0
     if len(speeds) >= 2:
         diffs = [abs(speeds[i] - speeds[i - 1]) for i in range(1, len(speeds))]

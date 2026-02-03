@@ -25,8 +25,7 @@ def sync_activities(
     sport_type: str | None = None,
     name_contains: str | None = None,
 ):
-    # Since you have only one user right now, we just take the first user.
-    # Later we’ll do proper auth/session.
+    # Single-user mode: select the first user.
     user = db.query(User).order_by(User.id.asc()).first()
     if not user:
         raise HTTPException(status_code=404, detail="No user found. Login with Strava first.")
