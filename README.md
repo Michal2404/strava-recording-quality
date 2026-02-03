@@ -1,124 +1,33 @@
-# Strava Recording Quality  
+# Strava Recording Quality
 **Strava GPS Recording Quality & Geospatial Analysis**
 
-Strava Recording Quality is a compact, end-to-end backend system built on top of the Strava API that focuses on the **recording, mapping, and geospatial analysis layer** of fitness tracking.
+Strava Recording Quality is a compact, end-to-end system for **ingesting Strava GPS streams**, **reconstructing tracks**, and **analyzing recording quality**. It stores raw points in **PostgreSQL + PostGIS**, then computes interpretable metrics like distance, max speed, spikes, stops, and jitter.
 
-It ingests raw GPS streams from Strava activities, stores them in **PostgreSQL + PostGIS**, reconstructs tracks, and computes **interpretable recording-quality metrics** such as distance, max speed, GPS spikes, stops, and signal jitter.
+![UI screenshot](docs/demov2.png)
 
-The project is intentionally small but production-oriented and mirrors problems commonly encountered in live activity tracking, mapping, and applied ML systems.
-
-
-![Demo screenshot](docs/demo.png)
-
----
-
-## Why this project
-
+## What this project is
 Fitness activities are recorded under noisy real-world conditions:
 - GPS jitter and signal loss
-- teleport jumps (“spikes”)
+- teleport jumps ("spikes")
 - false or missing pauses
 - irregular sampling intervals
 - device variability
 
-Before this data can be used for routing, mapping, or ML-driven insights, it must be **ingested correctly**, **stored in a geospatially native format**, and **analyzed for quality**.
-
-Strava Recording Quality demonstrates this pipeline end-to-end.
-
----
+This project demonstrates a production-minded pipeline to:
+- ingest raw GPS data from Strava
+- store it natively as geospatial data
+- rebuild clean tracks
+- compute quality signals you can act on
 
 ## Features
+- **Strava OAuth authentication**
+- **Activity metadata ingestion** with idempotent upserts
+- **Raw GPS stream ingestion** into PostGIS (point-level storage)
+- **Track reconstruction** as GeoJSON LineStrings
+- **Recording-quality metrics** (distance, max speed, spikes, stops, jitter)
+- **Modern web UI** for activity selection, track view, and quality report
 
-### Strava OAuth authentication
-- Secure login using Strava OAuth
-- User access tokens stored in the database
-- No tokens stored in source control
-
-**Endpoints**
-```
-GET /auth/strava/login
-GET /auth/strava/callback
-```
-
----
-
-### Activity metadata ingestion
-- Syncs recent athlete activities
-- Idempotent upserts into Postgres
-
-**Endpoint**
-```
-POST /sync/activities
-```
-
----
-
-### Raw GPS stream ingestion (PostGIS)
-- Fetches lat/lng/time/altitude streams from Strava
-- Stores one row per GPS point
-- Geometry stored as `POINT (SRID 4326)`
-- Indexed with GiST for spatial queries
-
-**Endpoint**
-```
-POST /activities/{activity_id}/ingest_streams
-```
-
----
-
-### Track reconstruction (GeoJSON)
-- Rebuilds ordered LineStrings from raw points
-- Suitable for visualization or downstream ML
-
-**Endpoint**
-```
-GET /activities/{activity_id}/track
-```
-
----
-
-### Recording quality analysis
-Computes interpretable metrics directly from GPS signals:
-- GPS-derived distance
-- maximum instantaneous speed
-- spike (teleport jump) detection
-- stop detection
-- jitter score (signal stability proxy)
-
-**Endpoint**
-```
-GET /activities/{activity_id}/quality
-```
-
----
-
-### Minimal demo UI
-- Static Leaflet map
-- Shows activity track + quality report
-
-```
-GET /static/demo.html
-```
-
----
-
-## Example output
-
-```json
-{
-  "activity_id": 2,
-  "sport_type": "Run",
-  "distance_m_gps": 9968.43,
-  "duration_s": 3886,
-  "max_speed_kmh": 13.24,
-  "spike_count": 0,
-  "stop_segments": 0,
-  "jitter_score": 0.24
-}
-```
-
-## Architecture overview
-
+## Architecture
 **Backend**
 - FastAPI
 - SQLAlchemy + Alembic
@@ -126,11 +35,9 @@ GET /static/demo.html
 - GeoAlchemy2 + Shapely
 - httpx (Strava API client)
 
-**Design highlights**
-- One row per recorded GPS point
-- PostGIS-native geometry storage
-- Idempotent ingestion
-- Clean API boundaries between ingestion, geometry, and analytics
+**Frontend**
+- React + Vite
+- Leaflet + React-Leaflet
 
 ## Repository structure
 ```
@@ -151,22 +58,24 @@ strava-recording-quality/
 │   └── .env.example
 ├── infra/
 │   └── docker-compose.yml
-└── README.md
+└── web/
+    ├── src/
+    └── package.json
 ```
 
-## Local setup
-
+## Quickstart
 **Prerequisites**
 - Docker + Docker Compose
 - Python 3.11+
+- Node 18+
 - Strava developer account
 
-1) Start Postgres + PostGIS (from repo root):
+### 1) Start Postgres + PostGIS (and Redis)
 ```bash
 docker compose -f infra/docker-compose.yml up -d
 ```
 
-2) Backend environment:
+### 2) Backend setup
 ```bash
 cd backend
 python -m venv .venv
@@ -174,72 +83,104 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3) Configure environment variables:
+### 3) Configure environment variables
 ```bash
 cp .env.example .env
 ```
 Fill in:
-- STRAVA_CLIENT_ID
-- STRAVA_CLIENT_SECRET
+- `STRAVA_CLIENT_ID`
+- `STRAVA_CLIENT_SECRET`
 
 In your Strava developer app settings:
-- Authorization Callback Domain: 127.0.0.1
-- Redirect URI: http://127.0.0.1:8000/auth/strava/callback
+- Authorization Callback Domain: `127.0.0.1`
+- Redirect URI: `http://127.0.0.1:8000/auth/strava/callback`
 
-4) Run database migrations:
+### 4) Run database migrations
 ```bash
 PYTHONPATH=. alembic upgrade head
 ```
 
-5) Start the API:
+### 5) Start the API
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
-Swagger UI: http://127.0.0.1:8000/docs
+Swagger UI: `http://127.0.0.1:8000/docs`
+
+### 6) Start the web UI
+```bash
+cd web
+npm install
+npm run dev
+```
+Open `http://127.0.0.1:5173`.
+
+> The Vite dev server proxies `/auth`, `/sync`, and `/activities` to the FastAPI backend.
+> If you deploy the UI separately, set `VITE_API_BASE` to your API URL.
 
 ## Typical usage flow
-
-1) Authenticate with Strava (open in browser):
+1. Authenticate with Strava:
 ```
 http://127.0.0.1:8000/auth/strava/login
 ```
 
-2) Sync activities:
+2. Sync activities:
 ```bash
 curl -X POST "http://127.0.0.1:8000/sync/activities?per_page=30"
 ```
 
-3) Pick an activity:
+3. Pick an activity:
 ```bash
 curl "http://127.0.0.1:8000/activities?limit=5"
 ```
 
-4) Ingest GPS streams:
+4. Ingest GPS streams:
 ```bash
 curl -X POST "http://127.0.0.1:8000/activities/<id>/ingest_streams"
 ```
 
-5) View results  
-Track (GeoJSON):
+5. Inspect results:
 ```bash
 curl "http://127.0.0.1:8000/activities/<id>/track"
-```
-Quality report:
-```bash
 curl "http://127.0.0.1:8000/activities/<id>/quality"
 ```
 
-6) Demo map (open):
+## API endpoints
+**Auth**
 ```
-http://127.0.0.1:8000/static/demo.html
+GET /auth/strava/login
+GET /auth/strava/callback
 ```
-(You can change the hardcoded `activityId` in `demo.html`.)
 
-## Design considerations
-- PostGIS-native geometry enables accurate spatial analysis and indexing.
+**Ingestion**
+```
+POST /sync/activities
+POST /activities/{activity_id}/ingest_streams
+```
+
+**Analysis**
+```
+GET /activities/{activity_id}/track
+GET /activities/{activity_id}/quality
+```
+
+## Example output
+```json
+{
+  "activity_id": 2,
+  "sport_type": "Run",
+  "distance_m_gps": 9968.43,
+  "duration_s": 3886,
+  "max_speed_kmh": 13.24,
+  "spike_count": 0,
+  "stop_segments": 0,
+  "jitter_score": 0.24
+}
+```
+
+## Design notes
 - Point-level storage preserves sampling irregularities and makes signal analysis explicit.
-- Simple, interpretable metrics provide immediate product value and are easy to extend into ML models.
-- Clear separation of concerns makes the system easy to evolve or scale.
+- PostGIS-native geometry enables accurate spatial analysis and indexing.
+- Metrics are interpretable and easy to extend into ML models.
 
 ## Possible extensions (out of scope by design)
 - Sport-specific quality thresholds
