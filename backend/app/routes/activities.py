@@ -19,6 +19,7 @@ def list_activities(
     """
     q = (
         db.query(Activity)
+        .filter(Activity.sport_type == "Run")
         .order_by(Activity.start_date.desc().nullslast())
         .limit(limit)
         .offset(offset)

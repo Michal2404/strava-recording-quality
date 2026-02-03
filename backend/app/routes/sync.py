@@ -19,7 +19,12 @@ def parse_start_date(s: str | None):
 
 
 @router.post("/activities")
-def sync_activities(db: Session = Depends(get_db), per_page: int = 30):
+def sync_activities(
+    db: Session = Depends(get_db),
+    per_page: int = 30,
+    sport_type: str | None = None,
+    name_contains: str | None = None,
+):
     # Since you have only one user right now, we just take the first user.
     # Later we’ll do proper auth/session.
     user = db.query(User).order_by(User.id.asc()).first()
@@ -34,7 +39,18 @@ def sync_activities(db: Session = Depends(get_db), per_page: int = 30):
     items = client.list_activities(per_page=per_page, page=1)
 
     upserted = 0
+    sport_filter = sport_type.lower() if sport_type else None
+    name_filter = name_contains.lower() if name_contains else None
+
     for a in items:
+        name = a.get("name") or ""
+        sport = a.get("sport_type") or a.get("type") or ""
+
+        if sport_filter and sport.lower() != sport_filter:
+            continue
+        if name_filter and name_filter not in name.lower():
+            continue
+
         strava_id = a["id"]
 
         activity = db.query(Activity).filter(Activity.strava_activity_id == strava_id).one_or_none()
@@ -42,8 +58,8 @@ def sync_activities(db: Session = Depends(get_db), per_page: int = 30):
             activity = Activity(strava_activity_id=strava_id, user_id=user.id)
             db.add(activity)
 
-        activity.name = a.get("name")
-        activity.sport_type = a.get("sport_type") or a.get("type")
+        activity.name = name or None
+        activity.sport_type = sport or None
         activity.start_date = parse_start_date(a.get("start_date"))
         activity.distance_m = a.get("distance")
         activity.moving_time_s = a.get("moving_time")
