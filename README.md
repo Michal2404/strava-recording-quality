@@ -117,6 +117,19 @@ Open `http://127.0.0.1:5173`.
 > The Vite dev server proxies `/auth`, `/sync`, and `/activities` to the FastAPI backend.
 > If you deploy the UI separately, set `VITE_API_BASE` to your API URL.
 
+## Testing
+Run from `backend/`.
+
+**Unit tests**
+```bash
+PYTHONPATH=. pytest tests/unit -q
+```
+
+**Integration tests (PostgreSQL + PostGIS required)**
+```bash
+TEST_DATABASE_URL=postgresql+psycopg://app:app@localhost:5432/livemap_test PYTHONPATH=. pytest tests/integration -q
+```
+
 ## Typical usage flow
 1. Authenticate with Strava:
 ```
