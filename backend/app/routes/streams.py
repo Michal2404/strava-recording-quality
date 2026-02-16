@@ -3,9 +3,6 @@ from sqlalchemy.orm import Session
 from geoalchemy2.shape import from_shape
 from shapely.geometry import Point
 from sqlalchemy import text
-from sqlalchemy import select
-from geoalchemy2.functions import ST_X, ST_Y
-from app.services.quality import compute_quality
 
 
 from app.core.db import get_db
@@ -13,6 +10,11 @@ from app.models.activity import Activity
 from app.models.activity_point import ActivityPoint
 from app.models.strava_token import StravaToken
 from app.models.user import User
+from app.services.quality_metrics import (
+    get_persisted_quality_metric,
+    upsert_quality_metric_from_points,
+    upsert_quality_metric_from_series,
+)
 from app.services.strava_session import build_strava_client, persist_refreshed_token
 
 router = APIRouter(prefix="/activities", tags=["streams"])
@@ -44,6 +46,8 @@ def ingest_activity_streams(
     db.query(ActivityPoint).filter(ActivityPoint.activity_id == activity.id).delete()
 
     points = []
+    quality_latlons: list[tuple[float, float]] = []
+    quality_times: list[int] = []
     for i, (coord, t) in enumerate(zip(latlng, times)):
         lon, lat = coord[1], coord[0]
 
@@ -55,8 +59,16 @@ def ingest_activity_streams(
             ele_m=altitude[i] if altitude else None,
         )
         points.append(p)
+        quality_latlons.append((lat, lon))
+        quality_times.append(int(t))
 
     db.bulk_save_objects(points)
+    upsert_quality_metric_from_series(
+        db,
+        activity_id=activity.id,
+        latlons=quality_latlons,
+        times=quality_times,
+    )
     db.commit()
 
     return {"ok": True, "points": len(points)}
@@ -103,49 +115,37 @@ def get_activity_track(activity_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{activity_id}/quality")
 def activity_quality(activity_id: int, db: Session = Depends(get_db)):
-    # ensure activity exists
+    # Ensure activity exists.
     activity = db.query(Activity).filter(Activity.id == activity_id).one_or_none()
     if not activity:
         raise HTTPException(status_code=404, detail="Activity not found")
 
-    # fetch ordered points (lat, lon, time)
-    rows = (
-        db.query(
-            ST_Y(ActivityPoint.geom),
-            ST_X(ActivityPoint.geom),
-            ActivityPoint.time_s,
-        )
-        .filter(ActivityPoint.activity_id == activity_id)
-        .order_by(ActivityPoint.seq.asc())
-        .all()
-    )
-
-    if len(rows) < 2:
-        raise HTTPException(status_code=404, detail="Not enough points. Ingest streams first.")
-
-    # rows are tuples: (lat, lon, time_s)
-    latlons = [(float(r[0]), float(r[1])) for r in rows]
-    times = [int(r[2]) for r in rows]
-
-
-    report = compute_quality(latlons, times)
+    metric = get_persisted_quality_metric(db, activity_id)
+    if metric is None:
+        try:
+            metric = upsert_quality_metric_from_points(db, activity_id=activity_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+        db.commit()
+        db.refresh(metric)
 
     return {
         "activity_id": activity_id,
         "name": activity.name,
         "sport_type": activity.sport_type,
-        "point_count": report.point_count,
-        "duration_s": report.duration_s,
-        "distance_m_gps": report.distance_m,
-        "max_speed_mps": report.max_speed_mps,
-        "max_speed_kmh": report.max_speed_mps * 3.6,
-        "spike_count": report.spike_count,
-        "stopped_time_s": report.stopped_time_s,
-        "stop_segments": report.stop_segments,
-        "jitter_score": report.jitter_score,
+        "point_count": metric.point_count,
+        "duration_s": metric.duration_s,
+        "distance_m_gps": metric.distance_m_gps,
+        "max_speed_mps": metric.max_speed_mps,
+        "max_speed_kmh": metric.max_speed_mps * 3.6,
+        "spike_count": metric.spike_count,
+        "stopped_time_s": metric.stopped_time_s,
+        "stop_segments": metric.stop_segments,
+        "jitter_score": metric.jitter_score,
+        "computed_at": metric.computed_at.isoformat() if metric.computed_at else None,
         "notes": {
-            "spike_speed_threshold_mps": 12.0,
-            "stop_speed_threshold_mps": 0.6,
-            "stop_min_duration_s": 10,
+            "spike_speed_threshold_mps": metric.spike_speed_threshold_mps,
+            "stop_speed_threshold_mps": metric.stop_speed_threshold_mps,
+            "stop_min_duration_s": metric.stop_min_duration_s,
         },
     }
