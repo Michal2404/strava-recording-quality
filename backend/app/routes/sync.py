@@ -3,10 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.integrations.strava import StravaClient
 from app.models.activity import Activity
 from app.models.strava_token import StravaToken
 from app.models.user import User
+from app.services.strava_session import build_strava_client, persist_refreshed_token
 
 router = APIRouter(prefix="/sync", tags=["sync"])
 
@@ -34,8 +34,9 @@ def sync_activities(
     if not token:
         raise HTTPException(status_code=404, detail="No Strava token found. Login with Strava first.")
 
-    client = StravaClient(token.access_token)
+    client = build_strava_client(token)
     items = client.list_activities(per_page=per_page, page=1)
+    persist_refreshed_token(db, token, client, commit=True)
 
     upserted = 0
     sport_filter = sport_type.lower() if sport_type else None

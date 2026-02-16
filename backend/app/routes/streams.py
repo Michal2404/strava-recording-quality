@@ -9,11 +9,11 @@ from app.services.quality import compute_quality
 
 
 from app.core.db import get_db
-from app.integrations.strava import StravaClient
 from app.models.activity import Activity
 from app.models.activity_point import ActivityPoint
 from app.models.strava_token import StravaToken
 from app.models.user import User
+from app.services.strava_session import build_strava_client, persist_refreshed_token
 
 router = APIRouter(prefix="/activities", tags=["streams"])
 
@@ -29,8 +29,9 @@ def ingest_activity_streams(
     user = db.query(User).filter(User.id == activity.user_id).one()
     token = db.query(StravaToken).filter(StravaToken.user_id == user.id).one()
 
-    client = StravaClient(token.access_token)
+    client = build_strava_client(token)
     streams = client.get_activity_streams(activity.strava_activity_id)
+    persist_refreshed_token(db, token, client, commit=True)
 
     latlng = streams.get("latlng", {}).get("data")
     times = streams.get("time", {}).get("data")
