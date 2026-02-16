@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Integer
+from sqlalchemy import ForeignKey, Integer, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from geoalchemy2 import Geometry
 
@@ -7,6 +7,9 @@ from app.models.base import Base
 
 class ActivityPoint(Base):
     __tablename__ = "activity_points"
+    __table_args__ = (
+        UniqueConstraint("activity_id", "seq", name="uq_activity_points_activity_id_seq"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
 
