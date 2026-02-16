@@ -6,6 +6,11 @@ Strava Recording Quality is a compact, end-to-end system for **ingesting Strava 
 
 ![UI screenshot](docs/demov2.png)
 
+## Live deployment
+- App: [https://api.michalszczepanski.com/](https://api.michalszczepanski.com/)
+- API docs: [https://api.michalszczepanski.com/docs](https://api.michalszczepanski.com/docs)
+- Health: [https://api.michalszczepanski.com/health](https://api.michalszczepanski.com/health)
+
 ## What this project is
 Fitness activities are recorded under noisy real-world conditions:
 - GPS jitter and signal loss
@@ -97,6 +102,8 @@ cp .env.example .env
 Fill in:
 - `STRAVA_CLIENT_ID`
 - `STRAVA_CLIENT_SECRET`
+- `STRAVA_REDIRECT_URI` (`http://127.0.0.1:8000/auth/strava/callback` for local dev)
+- `AUTH_SUCCESS_REDIRECT_URL` (`http://127.0.0.1:5173/` for local web dev)
 
 In your Strava developer app settings:
 - Authorization Callback Domain: `127.0.0.1`
@@ -128,6 +135,7 @@ Runtime configuration is environment-driven:
 - `WEB_CONCURRENCY` (default `2`)
 - `LOG_LEVEL` (default `info`)
 - `GUNICORN_TIMEOUT` (default `60`)
+- `AUTH_SUCCESS_REDIRECT_URL` (default `/`)
 - `SENTRY_DSN` (optional)
 - `SENTRY_TRACES_SAMPLE_RATE` (default `0.0`)
 
@@ -143,7 +151,7 @@ Open `http://127.0.0.1:5173`.
 > If you deploy the UI separately, set `VITE_API_BASE` to your API URL.
 
 ## EC2 deployment
-Production deployment assets for SRQ-08 are in `infra/ec2/`:
+Production deployment assets are in `infra/ec2/`:
 - host bootstrap (`bootstrap_host.sh`)
 - app deployment (`deploy.sh`)
 - Nginx + TLS setup (`setup_nginx_tls.sh`)
@@ -193,7 +201,7 @@ GitHub Actions workflow: `.github/workflows/ci.yml`
 - Median endpoint latency (`GET /activities/2/points.geojson`): `15.47 ms`
 - Full method and reproducible commands: `docs/benchmarks.md`
 
-## Project Summary Bullets
+## Highlights
 - Built and deployed a production FastAPI backend on AWS EC2 (Docker, Nginx, TLS, CI) to ingest Strava GPS streams, store point-level geospatial data in PostgreSQL/PostGIS, and compute recording-quality metrics.
 - Developed GeoJSON and ML-ready feature endpoints for geospatial analytics workflows, including reconstructed tracks, point-level outputs, and quality feature retrieval.
 
@@ -202,6 +210,7 @@ GitHub Actions workflow: `.github/workflows/ci.yml`
 ```
 http://127.0.0.1:8000/auth/strava/login
 ```
+After successful OAuth callback, backend redirects to `AUTH_SUCCESS_REDIRECT_URL`.
 
 2. Sync activities:
 ```bash
