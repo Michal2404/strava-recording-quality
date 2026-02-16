@@ -20,3 +20,6 @@ backend/alembic/__pycache__/
 
 # OS
 .DS_Store
+
+# local notes
+docs/local/
