@@ -72,7 +72,7 @@ strava-recording-quality/
 
 ### 1) Start Postgres + PostGIS (and Redis)
 ```bash
-docker compose -f infra/docker-compose.yml up -d
+docker compose -f infra/docker-compose.yml up -d db redis
 ```
 
 ### 2) Backend setup
@@ -105,6 +105,19 @@ PYTHONPATH=. alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 ```
 Swagger UI: `http://127.0.0.1:8000/docs`
+
+### 5b) (Optional) Run backend in a production-like container
+```bash
+docker compose -f infra/docker-compose.yml up -d --build api db
+docker compose -f infra/docker-compose.yml exec api alembic upgrade head
+```
+Runtime configuration is environment-driven:
+- `APP_HOST` (default `0.0.0.0`)
+- `APP_PORT` (default `8000`)
+- `HOST_API_PORT` (default `8000`, host-side published port)
+- `WEB_CONCURRENCY` (default `2`)
+- `LOG_LEVEL` (default `info`)
+- `GUNICORN_TIMEOUT` (default `60`)
 
 ### 6) Start the web UI
 ```bash
