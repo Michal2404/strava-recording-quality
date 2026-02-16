@@ -1,4 +1,5 @@
 # Strava Recording Quality
+[![CI](https://github.com/Michal2404/strava-recording-quality/actions/workflows/ci.yml/badge.svg)](https://github.com/Michal2404/strava-recording-quality/actions/workflows/ci.yml)
 **Strava GPS Recording Quality & Geospatial Analysis**
 
 Strava Recording Quality is a compact, end-to-end system for **ingesting Strava GPS streams**, **reconstructing tracks**, and **analyzing recording quality**. It stores raw points in **PostgreSQL + PostGIS**, then computes interpretable metrics like distance, max speed, spikes, stops, and jitter.
@@ -155,6 +156,11 @@ PYTHONPATH=. pytest tests/unit -q
 ```bash
 TEST_DATABASE_URL=postgresql+psycopg://app:app@localhost:5432/livemap_test PYTHONPATH=. pytest tests/integration -q
 ```
+
+## CI
+GitHub Actions workflow: `.github/workflows/ci.yml`
+- Pull requests: backend lint + unit/integration tests
+- Pushes to `main`: backend lint + tests + backend container build
 
 ## Typical usage flow
 1. Authenticate with Strava:
