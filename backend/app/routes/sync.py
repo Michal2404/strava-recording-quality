@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -18,13 +18,29 @@ def parse_start_date(s: str | None):
     return datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(timezone.utc)
 
 
+def to_unix_timestamp(value: datetime | None) -> int | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    else:
+        value = value.astimezone(timezone.utc)
+    return int(value.timestamp())
+
+
 @router.post("/activities")
 def sync_activities(
     db: Session = Depends(get_db),
-    per_page: int = 30,
+    per_page: int = Query(30, ge=1, le=200),
+    max_pages: int = Query(10, ge=1, le=500),
+    after: datetime | None = None,
+    before: datetime | None = None,
     sport_type: str | None = None,
     name_contains: str | None = None,
 ):
+    if after and before and after >= before:
+        raise HTTPException(status_code=400, detail="'after' must be earlier than 'before'")
+
     # Single-user mode: select the first user.
     user = db.query(User).order_by(User.id.asc()).first()
     if not user:
@@ -35,37 +51,75 @@ def sync_activities(
         raise HTTPException(status_code=404, detail="No Strava token found. Login with Strava first.")
 
     client = build_strava_client(token)
-    items = client.list_activities(per_page=per_page, page=1)
-    persist_refreshed_token(db, token, client, commit=True)
-
-    upserted = 0
+    after_ts = to_unix_timestamp(after)
+    before_ts = to_unix_timestamp(before)
     sport_filter = sport_type.lower() if sport_type else None
     name_filter = name_contains.lower() if name_contains else None
 
-    for a in items:
-        name = a.get("name") or ""
-        sport = a.get("sport_type") or a.get("type") or ""
+    fetched = 0
+    inserted = 0
+    updated = 0
+    skipped = 0
+    pages = 0
 
-        if sport_filter and sport.lower() != sport_filter:
-            continue
-        if name_filter and name_filter not in name.lower():
-            continue
+    for page in range(1, max_pages + 1):
+        items = client.list_activities(
+            per_page=per_page,
+            page=page,
+            after=after_ts,
+            before=before_ts,
+        )
+        if not isinstance(items, list):
+            raise HTTPException(status_code=502, detail="Unexpected response from Strava activities API")
 
-        strava_id = a["id"]
+        pages += 1
+        fetched += len(items)
+        if not items:
+            break
 
-        activity = db.query(Activity).filter(Activity.strava_activity_id == strava_id).one_or_none()
-        if activity is None:
-            activity = Activity(strava_activity_id=strava_id, user_id=user.id)
-            db.add(activity)
+        for a in items:
+            name = a.get("name") or ""
+            sport = a.get("sport_type") or a.get("type") or ""
 
-        activity.name = name or None
-        activity.sport_type = sport or None
-        activity.start_date = parse_start_date(a.get("start_date"))
-        activity.distance_m = a.get("distance")
-        activity.moving_time_s = a.get("moving_time")
-        activity.elevation_gain_m = a.get("total_elevation_gain")
+            if sport_filter and sport.lower() != sport_filter:
+                skipped += 1
+                continue
+            if name_filter and name_filter not in name.lower():
+                skipped += 1
+                continue
 
-        upserted += 1
+            strava_id = a.get("id")
+            if strava_id is None:
+                skipped += 1
+                continue
 
+            activity = db.query(Activity).filter(Activity.strava_activity_id == strava_id).one_or_none()
+            if activity is None:
+                activity = Activity(strava_activity_id=strava_id, user_id=user.id)
+                db.add(activity)
+                inserted += 1
+            else:
+                updated += 1
+
+            activity.name = name or None
+            activity.sport_type = sport or None
+            activity.start_date = parse_start_date(a.get("start_date"))
+            activity.distance_m = a.get("distance")
+            activity.moving_time_s = a.get("moving_time")
+            activity.elevation_gain_m = a.get("total_elevation_gain")
+
+        if len(items) < per_page:
+            break
+
+    persist_refreshed_token(db, token, client, commit=False)
     db.commit()
-    return {"ok": True, "count": upserted}
+    upserted = inserted + updated
+    return {
+        "ok": True,
+        "count": upserted,
+        "fetched": fetched,
+        "inserted": inserted,
+        "updated": updated,
+        "skipped": skipped,
+        "pages": pages,
+    }

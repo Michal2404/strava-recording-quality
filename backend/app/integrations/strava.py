@@ -133,8 +133,18 @@ class StravaClient:
 
         raise RuntimeError("Strava request retry loop ended unexpectedly")
 
-    def list_activities(self, per_page: int = 30, page: int = 1):
+    def list_activities(
+        self,
+        per_page: int = 30,
+        page: int = 1,
+        after: int | None = None,
+        before: int | None = None,
+    ):
         params = {"per_page": per_page, "page": page}
+        if after is not None:
+            params["after"] = after
+        if before is not None:
+            params["before"] = before
         return self._request_json("GET", "/athlete/activities", params=params)
 
     def get_activity_streams(self, activity_id: int, keys: str = "latlng,time,altitude"):
