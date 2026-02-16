@@ -160,7 +160,9 @@ POST /activities/{activity_id}/ingest_streams
 **Analysis**
 ```
 GET /activities/{activity_id}/track
+GET /activities/{activity_id}/points.geojson
 GET /activities/{activity_id}/quality
+GET /activities/{activity_id}/features
 ```
 
 ## Example output

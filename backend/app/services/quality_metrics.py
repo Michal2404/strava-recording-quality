@@ -94,3 +94,20 @@ def upsert_quality_metric_from_points(
         stop_speed_mps=stop_speed_mps,
         stop_min_duration_s=stop_min_duration_s,
     )
+
+
+def get_or_compute_quality_metric(
+    db: Session,
+    *,
+    activity_id: int,
+    commit_if_computed: bool = False,
+) -> ActivityQualityMetric:
+    metric = get_persisted_quality_metric(db, activity_id)
+    if metric is not None:
+        return metric
+
+    metric = upsert_quality_metric_from_points(db, activity_id=activity_id)
+    if commit_if_computed:
+        db.commit()
+        db.refresh(metric)
+    return metric
