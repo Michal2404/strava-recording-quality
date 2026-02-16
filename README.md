@@ -123,6 +123,8 @@ Runtime configuration is environment-driven:
 - `WEB_CONCURRENCY` (default `2`)
 - `LOG_LEVEL` (default `info`)
 - `GUNICORN_TIMEOUT` (default `60`)
+- `SENTRY_DSN` (optional)
+- `SENTRY_TRACES_SAMPLE_RATE` (default `0.0`)
 
 ### 6) Start the web UI
 ```bash
@@ -161,6 +163,13 @@ TEST_DATABASE_URL=postgresql+psycopg://app:app@localhost:5432/livemap_test PYTHO
 GitHub Actions workflow: `.github/workflows/ci.yml`
 - Pull requests: backend lint + unit/integration tests
 - Pushes to `main`: backend lint + tests + backend container build
+
+## Observability
+- API logs are JSON structured with request metadata (`request_id`, method, path, status, latency).
+- Each response includes `X-Request-ID` for traceability.
+- Unhandled exceptions are logged at error level and return a 500 payload with `request_id`.
+- Optional Sentry integration via `SENTRY_DSN` + `SENTRY_TRACES_SAMPLE_RATE`.
+- Operations runbook: `docs/operations.md`.
 
 ## Typical usage flow
 1. Authenticate with Strava:

@@ -13,5 +13,10 @@ class Settings(BaseSettings):
     STRAVA_REDIRECT_URI: str
     STRAVA_SCOPES: str = "read,activity:read_all"
 
+    # Observability
+    LOG_LEVEL: str = "INFO"
+    SENTRY_DSN: str | None = None
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.0
+
 
 settings = Settings()

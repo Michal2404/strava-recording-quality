@@ -100,6 +100,9 @@ Expected response:
 Open docs in browser:
 - `https://api.example.com/docs`
 
+Operational guidance:
+- `docs/operations.md`
+
 ## 8) Reboot validation (acceptance)
 
 ```bash

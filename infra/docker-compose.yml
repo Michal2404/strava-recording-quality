@@ -33,6 +33,8 @@ services:
       WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-60}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.0}
     ports:
       - "${HOST_API_BIND:-127.0.0.1}:${HOST_API_PORT:-8000}:8000"
     restart: unless-stopped
