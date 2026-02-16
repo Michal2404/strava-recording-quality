@@ -45,10 +45,47 @@ This project demonstrates a production-minded pipeline to:
 - React + Vite
 - Leaflet + React-Leaflet
 
-![Architecture diagram](docs/architecture-diagram.svg)
+```mermaid
+flowchart LR
+  UI["Web UI<br/>(React + Vite + Leaflet)"] -->|HTTPS| NGINX["Nginx<br/>(TLS + reverse proxy)"]
+  NGINX --> API["FastAPI backend<br/>(Gunicorn + Uvicorn)"]
+  API <--> STRAVA["Strava API<br/>(OAuth + activities + streams)"]
+  API --> DB[("PostgreSQL + PostGIS<br/>activities, activity_points, activity_quality_metrics")]
+  CI["GitHub Actions CI"] --> API
+  OBS["Structured logs + request IDs<br/>Optional Sentry"] --> API
+```
 
 ## Data flow
-![Data flow diagram](docs/data-flow.svg)
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User
+  participant Web as Web UI
+  participant API as FastAPI
+  participant Strava as Strava API
+  participant DB as PostgreSQL/PostGIS
+
+  User->>Web: Connect with Strava
+  Web->>API: GET /auth/strava/login
+  API-->>User: Redirect to Strava OAuth
+  User->>Strava: Authorize app
+  Strava->>API: GET /auth/strava/callback?code=...
+  API->>Strava: Exchange code for tokens
+  API->>DB: Upsert user + token
+  API-->>Web: Redirect to AUTH_SUCCESS_REDIRECT_URL
+
+  Web->>API: POST /sync/activities
+  API->>Strava: Paginated activities fetch
+  API->>DB: Upsert activities
+
+  Web->>API: POST /activities/{id}/ingest_streams
+  API->>Strava: Fetch latlng/time/altitude streams
+  API->>DB: Insert point-level rows
+  API->>DB: Upsert persisted quality metrics
+
+  Web->>API: GET /track, /points.geojson, /quality, /features
+  API-->>Web: GeoJSON + analytics outputs
+```
 
 ## Repository structure
 ```
@@ -191,7 +228,6 @@ GitHub Actions workflow: `.github/workflows/ci.yml`
 - EC2 deployment runbook: [`docs/deployment-ec2.md`](docs/deployment-ec2.md)
 - Observability runbook: [`docs/operations.md`](docs/operations.md)
 - Benchmark snapshot: [`docs/benchmarks.md`](docs/benchmarks.md)
-- Evidence map: [`docs/evidence-map.md`](docs/evidence-map.md)
 
 ## Benchmark Snapshot
 - Activities processed: `351`
