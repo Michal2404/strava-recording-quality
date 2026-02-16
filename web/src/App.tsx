@@ -41,6 +41,16 @@ type QualityReport = {
   jitter_score: number
 }
 
+type SyncResult = {
+  ok: boolean
+  count: number
+  fetched: number
+  inserted: number
+  updated: number
+  skipped: number
+  pages: number
+}
+
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
 const formatDuration = (totalSeconds?: number | null) => {
@@ -79,11 +89,9 @@ const getErrorMessage = (error: unknown) =>
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? 'GET').toUpperCase()
-  const headers: HeadersInit = {
-    ...(init?.headers ?? {}),
-  }
-  if (method !== 'GET' && method !== 'HEAD' && !('Content-Type' in headers)) {
-    headers['Content-Type'] = 'application/json'
+  const headers = new Headers(init?.headers)
+  if (method !== 'GET' && method !== 'HEAD' && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
   }
 
   const response = await fetch(`${API_BASE}${path}`, {
@@ -132,6 +140,9 @@ function App() {
   const [qualityError, setQualityError] = useState<string | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [perPage, setPerPage] = useState(30)
+  const [maxPages, setMaxPages] = useState(10)
+  const [afterDate, setAfterDate] = useState('')
+  const [beforeDate, setBeforeDate] = useState('')
   const [onlyRuns, setOnlyRuns] = useState(true)
   const [message, setMessage] = useState<string | null>(null)
   const autoIngestedIds = useRef<Set<number>>(new Set())
@@ -141,15 +152,24 @@ function App() {
     [activities, selectedId],
   )
 
-  const loadActivities = async () => {
+  const loadActivities = async (options?: { preserveMessage?: boolean }) => {
     setListLoading(true)
-    setMessage(null)
+    if (!options?.preserveMessage) {
+      setMessage(null)
+    }
     try {
-      const data = await apiFetch<Activity[]>('/activities/?limit=50')
-      setActivities(data)
-      if (!selectedId && data.length > 0) {
-        setSelectedId(data[0].id)
+      const params = new URLSearchParams({ limit: '50' })
+      if (onlyRuns) {
+        params.set('sport_type', 'Run')
       }
+      const data = await apiFetch<Activity[]>(`/activities/?${params.toString()}`)
+      setActivities(data)
+      setSelectedId((current) => {
+        if (current !== null && data.some((activity) => activity.id === current)) {
+          return current
+        }
+        return data[0]?.id ?? null
+      })
     } catch (error) {
       setMessage(`Could not load activities. ${getErrorMessage(error)}`)
     } finally {
@@ -218,20 +238,31 @@ function App() {
     try {
       const params = new URLSearchParams({
         per_page: String(perPage),
+        max_pages: String(maxPages),
       })
       if (onlyRuns) {
         params.set('sport_type', 'Run')
       }
-      const result = await apiFetch<{ ok: boolean; count: number }>(
+      const toIsoOrThrow = (raw: string, label: string) => {
+        const parsed = new Date(raw)
+        if (Number.isNaN(parsed.getTime())) {
+          throw new Error(`Invalid ${label} datetime`)
+        }
+        return parsed.toISOString()
+      }
+      const afterIso = afterDate ? toIsoOrThrow(afterDate, 'after') : null
+      const beforeIso = beforeDate ? toIsoOrThrow(beforeDate, 'before') : null
+      if (afterIso) params.set('after', afterIso)
+      if (beforeIso) params.set('before', beforeIso)
+
+      const result = await apiFetch<SyncResult>(
         `/sync/activities?${params.toString()}`,
         { method: 'POST' },
       )
       setMessage(
-        onlyRuns
-          ? `Synced ${result.count} run activities.`
-          : `Synced ${result.count} activities.`,
+        `Synced ${result.count} activities (${result.inserted} inserted, ${result.updated} updated, ${result.skipped} skipped) from ${result.fetched} fetched across ${result.pages} page(s).`,
       )
-      await loadActivities()
+      await loadActivities({ preserveMessage: true })
     } catch (error) {
       setMessage(`Sync failed. ${getErrorMessage(error)}`)
     } finally {
@@ -259,7 +290,7 @@ function App() {
 
   useEffect(() => {
     void loadActivities()
-  }, [])
+  }, [onlyRuns])
 
   useEffect(() => {
     if (!selectedId) return
@@ -287,14 +318,44 @@ function App() {
               id="per-page"
               type="number"
               min={5}
-              max={50}
+              max={200}
               value={perPage}
               onChange={(event) => {
                 const value = Number(event.target.value)
                 if (!Number.isFinite(value)) return
-                const clamped = Math.min(50, Math.max(5, value))
+                const clamped = Math.min(200, Math.max(5, value))
                 setPerPage(clamped)
               }}
+            />
+            <label htmlFor="max-pages">Max pages</label>
+            <input
+              id="max-pages"
+              type="number"
+              min={1}
+              max={100}
+              value={maxPages}
+              onChange={(event) => {
+                const value = Number(event.target.value)
+                if (!Number.isFinite(value)) return
+                const clamped = Math.min(100, Math.max(1, value))
+                setMaxPages(clamped)
+              }}
+            />
+            <label htmlFor="after-date">After</label>
+            <input
+              id="after-date"
+              className="sync-date"
+              type="datetime-local"
+              value={afterDate}
+              onChange={(event) => setAfterDate(event.target.value)}
+            />
+            <label htmlFor="before-date">Before</label>
+            <input
+              id="before-date"
+              className="sync-date"
+              type="datetime-local"
+              value={beforeDate}
+              onChange={(event) => setBeforeDate(event.target.value)}
             />
             <label className="filter-toggle">
               <input
@@ -318,7 +379,13 @@ function App() {
               <h2>Activities</h2>
               <p>{listLoading ? 'Loading latest list…' : `${activities.length} synced`}</p>
             </div>
-            <button className="btn subtle" onClick={loadActivities} disabled={listLoading}>
+            <button
+              className="btn subtle"
+              onClick={() => {
+                void loadActivities()
+              }}
+              disabled={listLoading}
+            >
               Refresh
             </button>
           </div>

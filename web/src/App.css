@@ -43,6 +43,8 @@
 .sync-group {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 10px;
   padding: 10px 12px;
   border-radius: 14px;
@@ -72,13 +74,20 @@
 }
 
 .sync-group input {
-  width: 64px;
   background: transparent;
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 6px 8px;
   font-size: 13px;
+}
+
+.sync-group input[type="number"] {
+  width: 64px;
+}
+
+.sync-group .sync-date {
+  width: 186px;
 }
 
 .btn {

@@ -12,16 +12,14 @@ router = APIRouter(prefix="/activities", tags=["activities"])
 def list_activities(
     limit: int = 20,
     offset: int = 0,
+    sport_type: str | None = None,
     db: Session = Depends(get_db),
 ):
     """
     List activities, newest first.
     """
-    q = (
-        db.query(Activity)
-        .filter(Activity.sport_type == "Run")
-        .order_by(Activity.start_date.desc().nullslast())
-        .limit(limit)
-        .offset(offset)
-    )
+    q = db.query(Activity)
+    if sport_type:
+        q = q.filter(Activity.sport_type.ilike(sport_type))
+    q = q.order_by(Activity.start_date.desc().nullslast()).limit(limit).offset(offset)
     return q.all()
