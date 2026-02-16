@@ -71,4 +71,5 @@ def strava_callback(code: str, scope: str | None = None, db: Session = Depends(g
 
     db.commit()
 
-    return {"ok": True, "user_id": user.id, "athlete_id": athlete_id, "scope": scope}
+    redirect_url = settings.AUTH_SUCCESS_REDIRECT_URL or "/"
+    return RedirectResponse(url=redirect_url, status_code=303)

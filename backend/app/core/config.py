@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     STRAVA_CLIENT_SECRET: str
     STRAVA_REDIRECT_URI: str
     STRAVA_SCOPES: str = "read,activity:read_all"
+    AUTH_SUCCESS_REDIRECT_URL: str = "/"
 
     # Observability
     LOG_LEVEL: str = "INFO"
