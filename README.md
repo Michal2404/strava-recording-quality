@@ -40,6 +40,11 @@ This project demonstrates a production-minded pipeline to:
 - React + Vite
 - Leaflet + React-Leaflet
 
+![Architecture diagram](docs/architecture-diagram.svg)
+
+## Data flow
+![Data flow diagram](docs/data-flow.svg)
+
 ## Repository structure
 ```
 strava-recording-quality/
@@ -170,6 +175,27 @@ GitHub Actions workflow: `.github/workflows/ci.yml`
 - Unhandled exceptions are logged at error level and return a 500 payload with `request_id`.
 - Optional Sentry integration via `SENTRY_DSN` + `SENTRY_TRACES_SAMPLE_RATE`.
 - Operations runbook: `docs/operations.md`.
+
+## Proof Links
+- Live API health: [https://api.michalszczepanski.com/health](https://api.michalszczepanski.com/health)
+- Live API docs: [https://api.michalszczepanski.com/docs](https://api.michalszczepanski.com/docs)
+- CI workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+- EC2 deployment runbook: [`docs/deployment-ec2.md`](docs/deployment-ec2.md)
+- Observability runbook: [`docs/operations.md`](docs/operations.md)
+- Benchmark snapshot: [`docs/benchmarks.md`](docs/benchmarks.md)
+- Evidence map: [`docs/evidence-map.md`](docs/evidence-map.md)
+
+## Benchmark Snapshot
+- Activities processed: `351`
+- Point-level rows ingested: `9,275`
+- Median endpoint latency (`GET /activities/?limit=50`): `3.59 ms`
+- Median endpoint latency (`GET /activities/2/quality`): `3.28 ms`
+- Median endpoint latency (`GET /activities/2/points.geojson`): `15.47 ms`
+- Full method and reproducible commands: `docs/benchmarks.md`
+
+## Project Summary Bullets
+- Built and deployed a production FastAPI backend on AWS EC2 (Docker, Nginx, TLS, CI) to ingest Strava GPS streams, store point-level geospatial data in PostgreSQL/PostGIS, and compute recording-quality metrics.
+- Developed GeoJSON and ML-ready feature endpoints for geospatial analytics workflows, including reconstructed tracks, point-level outputs, and quality feature retrieval.
 
 ## Typical usage flow
 1. Authenticate with Strava:
