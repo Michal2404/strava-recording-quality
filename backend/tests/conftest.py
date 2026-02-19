@@ -23,8 +23,8 @@ os.environ.setdefault("STRAVA_CLIENT_SECRET", "test-client-secret")
 os.environ.setdefault("STRAVA_REDIRECT_URI", "http://127.0.0.1:8000/auth/strava/callback")
 os.environ.setdefault("STRAVA_SCOPES", "read,activity:read_all")
 
-from app.core.db import get_db
-from app.main import app
+from app.core.db import get_db  # noqa: E402
+from app.main import app  # noqa: E402
 
 DEFAULT_TEST_DATABASE_URL = "postgresql+psycopg://app:app@localhost:5432/livemap_test"
 
@@ -70,6 +70,7 @@ def _truncate_tables(db: Session) -> None:
         text(
             """
             TRUNCATE TABLE
+              activity_quality_labels,
               activity_quality_metrics,
               activity_points,
               activities,

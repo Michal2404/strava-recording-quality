@@ -8,6 +8,7 @@ from app.routes.auth import router as auth_router
 from app.routes.sync import router as sync_router
 from app.routes.activities import router as activities_router
 from app.routes.streams import router as streams_router
+from app.routes.ml import router as ml_router
 
 configure_logging(settings.LOG_LEVEL)
 
@@ -18,6 +19,7 @@ app.include_router(auth_router)
 app.include_router(sync_router)
 app.include_router(activities_router)
 app.include_router(streams_router)
+app.include_router(ml_router)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
