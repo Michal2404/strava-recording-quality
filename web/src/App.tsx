@@ -140,10 +140,10 @@ function App() {
   const [qualityError, setQualityError] = useState<string | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [perPage, setPerPage] = useState(30)
-  const [maxPages, setMaxPages] = useState(10)
+  const [maxPages, setMaxPages] = useState<number | ''>('')
   const [afterDate, setAfterDate] = useState('')
   const [beforeDate, setBeforeDate] = useState('')
-  const [onlyRuns, setOnlyRuns] = useState(true)
+  const [onlyRuns, setOnlyRuns] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const autoIngestedIds = useRef<Set<number>>(new Set())
 
@@ -158,7 +158,7 @@ function App() {
       setMessage(null)
     }
     try {
-      const params = new URLSearchParams({ limit: '50' })
+      const params = new URLSearchParams()
       if (onlyRuns) {
         params.set('sport_type', 'Run')
       }
@@ -238,8 +238,10 @@ function App() {
     try {
       const params = new URLSearchParams({
         per_page: String(perPage),
-        max_pages: String(maxPages),
       })
+      if (maxPages !== '') {
+        params.set('max_pages', String(maxPages))
+      }
       if (onlyRuns) {
         params.set('sport_type', 'Run')
       }
@@ -327,17 +329,23 @@ function App() {
                 setPerPage(clamped)
               }}
             />
-            <label htmlFor="max-pages">Max pages</label>
+            <label htmlFor="max-pages">Max pages (blank = all)</label>
             <input
               id="max-pages"
               type="number"
               min={1}
-              max={100}
+              max={500}
+              placeholder="All"
               value={maxPages}
               onChange={(event) => {
-                const value = Number(event.target.value)
+                const raw = event.target.value.trim()
+                if (raw === '') {
+                  setMaxPages('')
+                  return
+                }
+                const value = Number(raw)
                 if (!Number.isFinite(value)) return
-                const clamped = Math.min(100, Math.max(1, value))
+                const clamped = Math.min(500, Math.max(1, Math.floor(value)))
                 setMaxPages(clamped)
               }}
             />

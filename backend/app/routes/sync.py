@@ -32,7 +32,7 @@ def to_unix_timestamp(value: datetime | None) -> int | None:
 def sync_activities(
     db: Session = Depends(get_db),
     per_page: int = Query(30, ge=1, le=200),
-    max_pages: int = Query(10, ge=1, le=500),
+    max_pages: int | None = Query(default=None, ge=1, le=5000),
     after: datetime | None = None,
     before: datetime | None = None,
     sport_type: str | None = None,
@@ -62,7 +62,11 @@ def sync_activities(
     skipped = 0
     pages = 0
 
-    for page in range(1, max_pages + 1):
+    page = 1
+    while True:
+        if max_pages is not None and page > max_pages:
+            break
+
         items = client.list_activities(
             per_page=per_page,
             page=page,
@@ -110,6 +114,8 @@ def sync_activities(
 
         if len(items) < per_page:
             break
+
+        page += 1
 
     persist_refreshed_token(db, token, client, commit=False)
     db.commit()
