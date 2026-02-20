@@ -1,125 +1,131 @@
 # Strava Recording Quality
 [![CI](https://github.com/Michal2404/strava-recording-quality/actions/workflows/ci.yml/badge.svg)](https://github.com/Michal2404/strava-recording-quality/actions/workflows/ci.yml)
-**Strava GPS Recording Quality & Geospatial Analysis**
 
-Strava Recording Quality is a compact, end-to-end system for **ingesting Strava GPS streams**, **reconstructing tracks**, and **analyzing recording quality**. It stores raw points in **PostgreSQL + PostGIS**, then computes interpretable metrics like distance, max speed, spikes, stops, and jitter.
+Strava Recording Quality is an end-to-end backend + web system for:
+- ingesting Strava activities and GPS streams,
+- storing point-level geospatial data in PostgreSQL/PostGIS,
+- computing recording-quality metrics,
+- and (currently in rebuild) evolving into a production ML classifier.
 
 ![UI screenshot](docs/demov2.png)
 
-## Live deployment
+## Live Deployment
 - App: [https://api.michalszczepanski.com/](https://api.michalszczepanski.com/)
 - API docs: [https://api.michalszczepanski.com/docs](https://api.michalszczepanski.com/docs)
 - Health: [https://api.michalszczepanski.com/health](https://api.michalszczepanski.com/health)
 
-## What this project is
-Fitness activities are recorded under noisy real-world conditions:
-- GPS jitter and signal loss
-- teleport jumps ("spikes")
-- false or missing pauses
-- irregular sampling intervals
-- device variability
+## Project Status (Rebuild in Progress)
 
-This project demonstrates a production-minded pipeline to:
-- ingest raw GPS data from Strava
-- store it natively as geospatial data
-- rebuild clean tracks
-- compute quality signals you can act on
+### Implemented now
+- Strava OAuth authentication and token persistence.
+- Activity sync with pagination and filtering (`/sync/activities`).
+- GPS stream ingestion to PostGIS point table (`/activities/{id}/ingest_streams`).
+- GeoJSON outputs (`/track`, `/points.geojson`).
+- Persisted activity quality metrics (`activity_quality_metrics`).
+- Feature endpoint for analytics/ML-ready values (`/activities/{id}/features`).
+- ML labeling foundation:
+  - `activity_quality_labels` table
+  - `POST /ml/activities/{activity_id}/label`
+  - `GET /ml/labels`
+- CI for backend lint + unit/integration tests.
+- EC2 deployment with Docker Compose, Nginx TLS, and systemd startup.
 
-## Features
-- **Strava OAuth authentication**
-- **Activity metadata ingestion** with idempotent upserts
-- **Raw GPS stream ingestion** into PostGIS (point-level storage)
-- **Track reconstruction** as GeoJSON LineStrings
-- **Recording-quality metrics** (distance, max speed, spikes, stops, jitter)
-- **Modern web UI** for activity selection, track view, and quality report
+### In progress now
+- Converting quality analytics pipeline into a full applied ML system.
+- Building persistent feature snapshots for reproducible training.
+- Training/evaluation pipeline and model registry.
+- Online inference endpoint and ML monitoring.
 
-## Architecture
-**Backend**
-- FastAPI
-- SQLAlchemy + Alembic
-- PostgreSQL + PostGIS
-- GeoAlchemy2 + Shapely
-- httpx (Strava API client)
+## Final Version Vision
+The final version is a productionized **GPS Recording Quality Classifier** that:
+1. trains models on labeled activity data,
+2. evaluates them with explicit metrics and thresholds,
+3. deploys an active model version,
+4. serves predictions via API,
+5. and monitors serving quality + data drift.
 
-**Frontend**
-- React + Vite
-- Leaflet + React-Leaflet
+Expected final user flow:
+1. Sync activities and ingest streams.
+2. Compute and persist quality metrics/features.
+3. Label activities (`good`/`bad` quality).
+4. Train and register a model version.
+5. Predict quality class for any activity.
+6. Monitor model behavior over time.
+
+## Architecture (Current)
 
 ```mermaid
 flowchart LR
   UI["Web UI<br/>(React + Vite + Leaflet)"] -->|HTTPS| NGINX["Nginx<br/>(TLS + reverse proxy)"]
   NGINX --> API["FastAPI backend<br/>(Gunicorn + Uvicorn)"]
   API <--> STRAVA["Strava API<br/>(OAuth + activities + streams)"]
-  API --> DB[("PostgreSQL + PostGIS<br/>activities, activity_points, activity_quality_metrics")]
+  API --> DB[("PostgreSQL + PostGIS<br/>users, activities, activity_points,<br/>activity_quality_metrics, activity_quality_labels")]
   CI["GitHub Actions CI"] --> API
   OBS["Structured logs + request IDs<br/>Optional Sentry"] --> API
 ```
 
-## Data flow
+## Architecture (Target Final ML Version)
+
 ```mermaid
-sequenceDiagram
-  autonumber
-  actor User
-  participant Web as Web UI
-  participant API as FastAPI
-  participant Strava as Strava API
-  participant DB as PostgreSQL/PostGIS
-
-  User->>Web: Connect with Strava
-  Web->>API: GET /auth/strava/login
-  API-->>User: Redirect to Strava OAuth
-  User->>Strava: Authorize app
-  Strava->>API: GET /auth/strava/callback?code=...
-  API->>Strava: Exchange code for tokens
-  API->>DB: Upsert user + token
-  API-->>Web: Redirect to AUTH_SUCCESS_REDIRECT_URL
-
-  Web->>API: POST /sync/activities
-  API->>Strava: Paginated activities fetch
-  API->>DB: Upsert activities
-
-  Web->>API: POST /activities/{id}/ingest_streams
-  API->>Strava: Fetch latlng/time/altitude streams
-  API->>DB: Insert point-level rows
-  API->>DB: Upsert persisted quality metrics
-
-  Web->>API: GET /track, /points.geojson, /quality, /features
-  API-->>Web: GeoJSON + analytics outputs
+flowchart LR
+  UI["Web UI"] --> API["FastAPI API"]
+  API --> DB[("PostgreSQL/PostGIS")]
+  API --> REG["Model Registry Metadata<br/>(ml_models)"]
+  API --> PRED["Prediction Store<br/>(activity_quality_predictions)"]
+  DB --> FEAT["Feature Builder Service"]
+  FEAT --> FEATTBL[("activity_ml_features")]
+  FEATTBL --> TRAIN["Training + Evaluation Pipeline"]
+  TRAIN --> ART["Model Artifacts"]
+  ART --> API
+  MON["Monitoring/Drift Jobs"] --> DB
+  MON --> API
 ```
 
-## Repository structure
-```
-strava-recording-quality/
-├── backend/
-│   ├── app/
-│   │   ├── core/
-│   │   ├── integrations/
-│   │   ├── models/
-│   │   ├── routes/
-│   │   ├── services/
-│   │   ├── schemas/
-│   │   └── static/
-│   │       └── demo.html
-│   ├── alembic/
-│   ├── alembic.ini
-│   ├── requirements.txt
-│   └── .env.example
-├── infra/
-│   ├── docker-compose.yml
-│   └── ec2/
-└── web/
-    ├── src/
-    └── package.json
-```
+## Current Data Model
 
-## Quickstart
-**Prerequisites**
+Core tables already in use:
+- `users`
+- `strava_tokens`
+- `activities`
+- `activity_points`
+- `activity_quality_metrics`
+- `activity_quality_labels`
+
+Planned next ML tables:
+- `activity_ml_features`
+- `ml_models`
+- `activity_quality_predictions`
+
+## API Surface (Current)
+
+### Auth
+- `GET /auth/strava/login`
+- `GET /auth/strava/callback`
+
+### Ingestion
+- `POST /sync/activities`
+- `POST /activities/{activity_id}/ingest_streams`
+
+### Analytics / Geospatial Outputs
+- `GET /activities/`
+- `GET /activities/{activity_id}/track`
+- `GET /activities/{activity_id}/points.geojson`
+- `GET /activities/{activity_id}/quality`
+- `GET /activities/{activity_id}/features`
+
+### ML Labeling (implemented in rebuild)
+- `POST /ml/activities/{activity_id}/label`
+- `GET /ml/labels`
+
+## Local Development
+
+### Prerequisites
 - Docker + Docker Compose
-- Python 3.11+
-- Node 18+
+- Python 3.12+
+- Node 18+ (Node 20 recommended)
 - Strava developer account
 
-### 1) Start Postgres + PostGIS (and Redis)
+### 1) Start DB and Redis
 ```bash
 docker compose -f infra/docker-compose.yml up -d db redis
 ```
@@ -132,186 +138,96 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3) Configure environment variables
+### 3) Environment config
 ```bash
 cp .env.example .env
 ```
-Fill in:
+
+Set required values:
 - `STRAVA_CLIENT_ID`
 - `STRAVA_CLIENT_SECRET`
-- `STRAVA_REDIRECT_URI` (`http://127.0.0.1:8000/auth/strava/callback` for local dev)
-- `AUTH_SUCCESS_REDIRECT_URL` (`http://127.0.0.1:5173/` for local web dev)
+- `STRAVA_REDIRECT_URI` (local: `http://127.0.0.1:8000/auth/strava/callback`)
+- `AUTH_SUCCESS_REDIRECT_URL` (local UI: `http://127.0.0.1:5173/`)
 
-In your Strava developer app settings:
-- Authorization Callback Domain: `127.0.0.1`
-- Redirect URI: `http://127.0.0.1:8000/auth/strava/callback`
-
-### 4) Run database migrations
+### 4) Apply migrations
 ```bash
 PYTHONPATH=. alembic upgrade head
 ```
 
-### 5) Start the API
+### 5) Run backend
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
-Swagger UI: `http://127.0.0.1:8000/docs`
 
-### 5b) (Optional) Run backend in a production-like container
-```bash
-docker compose -f infra/docker-compose.yml up -d --build api db
-docker compose -f infra/docker-compose.yml exec api alembic upgrade head
-```
-Runtime configuration is environment-driven:
-- `APP_HOST` (default `0.0.0.0`)
-- `APP_PORT` (default `8000`)
-- `HOST_API_BIND` (default `127.0.0.1`)
-- `HOST_API_PORT` (default `8000`, host-side published port)
-- `HOST_DB_BIND` (default `127.0.0.1`)
-- `HOST_REDIS_BIND` (default `127.0.0.1`)
-- `WEB_CONCURRENCY` (default `2`)
-- `LOG_LEVEL` (default `info`)
-- `GUNICORN_TIMEOUT` (default `60`)
-- `AUTH_SUCCESS_REDIRECT_URL` (default `/`)
-- `SENTRY_DSN` (optional)
-- `SENTRY_TRACES_SAMPLE_RATE` (default `0.0`)
+Swagger: `http://127.0.0.1:8000/docs`
 
-### 6) Start the web UI
+### 6) Run web UI
 ```bash
-cd web
+cd ../web
 npm install
 npm run dev
 ```
+
 Open `http://127.0.0.1:5173`.
 
-> The Vite dev server proxies `/auth`, `/sync`, and `/activities` to the FastAPI backend.
-> If you deploy the UI separately, set `VITE_API_BASE` to your API URL.
+## Quick Smoke Test
 
-## EC2 deployment
-Production deployment assets are in `infra/ec2/`:
-- host bootstrap (`bootstrap_host.sh`)
-- app deployment (`deploy.sh`)
-- Nginx + TLS setup (`setup_nginx_tls.sh`)
-- reboot-safe startup with systemd (`install_systemd_service.sh`)
+### Sync + ingest + inspect
+```bash
+curl -X POST "http://127.0.0.1:8000/sync/activities?per_page=30"
+curl -X POST "http://127.0.0.1:8000/activities/2/ingest_streams"
+curl "http://127.0.0.1:8000/activities/2/quality"
+curl "http://127.0.0.1:8000/activities/2/features"
+```
 
-Step-by-step runbook: `docs/deployment-ec2.md`.
+### ML labeling endpoints
+```bash
+curl -X POST "http://127.0.0.1:8000/ml/activities/2/label" \
+  -H "Content-Type: application/json" \
+  -d '{"label_bad": true, "label_source": "manual", "label_reason": "gps spikes", "label_confidence": 0.9, "created_by": "michal"}'
+
+curl "http://127.0.0.1:8000/ml/labels?label_bad=true&label_source=manual"
+```
 
 ## Testing
+
 Run from `backend/`.
 
-**Unit tests**
+Unit tests:
 ```bash
 PYTHONPATH=. pytest tests/unit -q
 ```
 
-**Integration tests (PostgreSQL + PostGIS required)**
+Integration tests (requires PostgreSQL + PostGIS):
 ```bash
 TEST_DATABASE_URL=postgresql+psycopg://app:app@localhost:5432/livemap_test PYTHONPATH=. pytest tests/integration -q
 ```
 
 ## CI
-GitHub Actions workflow: `.github/workflows/ci.yml`
+
+Workflow: `.github/workflows/ci.yml`
 - Pull requests: backend lint + unit/integration tests
-- Pushes to `main`: backend lint + tests + backend container build
+- Pushes to `main`: backend checks + backend image build
 
-## Observability
-- API logs are JSON structured with request metadata (`request_id`, method, path, status, latency).
-- Each response includes `X-Request-ID` for traceability.
-- Unhandled exceptions are logged at error level and return a 500 payload with `request_id`.
-- Optional Sentry integration via `SENTRY_DSN` + `SENTRY_TRACES_SAMPLE_RATE`.
-- Operations runbook: `docs/operations.md`.
+## Deployment and Operations
+- EC2 runbook: `docs/deployment-ec2.md`
+- Operations runbook: `docs/operations.md`
 
-## Proof Links
-- Live API health: [https://api.michalszczepanski.com/health](https://api.michalszczepanski.com/health)
-- Live API docs: [https://api.michalszczepanski.com/docs](https://api.michalszczepanski.com/docs)
-- CI workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
-- EC2 deployment runbook: [`docs/deployment-ec2.md`](docs/deployment-ec2.md)
-- Observability runbook: [`docs/operations.md`](docs/operations.md)
-- Benchmark snapshot: [`docs/benchmarks.md`](docs/benchmarks.md)
+Production stack:
+- Docker Compose services: `api`, `db`, `redis`
+- Nginx reverse proxy with Let's Encrypt TLS
+- systemd service (`srq-stack.service`) for reboot-safe startup
 
-## Benchmark Snapshot
-- Activities processed: `351`
-- Point-level rows ingested: `9,275`
-- Median endpoint latency (`GET /activities/?limit=50`): `3.59 ms`
-- Median endpoint latency (`GET /activities/2/quality`): `3.28 ms`
-- Median endpoint latency (`GET /activities/2/points.geojson`): `15.47 ms`
-- Full method and reproducible commands: `docs/benchmarks.md`
+## Rebuild Roadmap (High Level)
 
-## Highlights
-- Built and deployed a production FastAPI backend on AWS EC2 (Docker, Nginx, TLS, CI) to ingest Strava GPS streams, store point-level geospatial data in PostgreSQL/PostGIS, and compute recording-quality metrics.
-- Developed GeoJSON and ML-ready feature endpoints for geospatial analytics workflows, including reconstructed tracks, point-level outputs, and quality feature retrieval.
+1. Label storage and APIs (done).
+2. Feature snapshot table + feature builder service.
+3. Weak-label bootstrap and labeling workflow.
+4. Model training + evaluation pipeline.
+5. Model registry + active model selection.
+6. Online prediction endpoint + prediction persistence.
+7. Monitoring and drift checks.
 
-## Typical usage flow
-1. Authenticate with Strava:
-```
-http://127.0.0.1:8000/auth/strava/login
-```
-After successful OAuth callback, backend redirects to `AUTH_SUCCESS_REDIRECT_URL`.
-
-2. Sync activities:
-```bash
-curl -X POST "http://127.0.0.1:8000/sync/activities?per_page=30"
-```
-
-3. Pick an activity:
-```bash
-curl "http://127.0.0.1:8000/activities?limit=5"
-```
-
-4. Ingest GPS streams:
-```bash
-curl -X POST "http://127.0.0.1:8000/activities/<id>/ingest_streams"
-```
-
-5. Inspect results:
-```bash
-curl "http://127.0.0.1:8000/activities/<id>/track"
-curl "http://127.0.0.1:8000/activities/<id>/quality"
-```
-
-## API endpoints
-**Auth**
-```
-GET /auth/strava/login
-GET /auth/strava/callback
-```
-
-**Ingestion**
-```
-POST /sync/activities
-POST /activities/{activity_id}/ingest_streams
-```
-
-**Analysis**
-```
-GET /activities/{activity_id}/track
-GET /activities/{activity_id}/points.geojson
-GET /activities/{activity_id}/quality
-GET /activities/{activity_id}/features
-```
-
-## Example output
-```json
-{
-  "activity_id": 2,
-  "sport_type": "Run",
-  "distance_m_gps": 9968.43,
-  "duration_s": 3886,
-  "max_speed_kmh": 13.24,
-  "spike_count": 0,
-  "stop_segments": 0,
-  "jitter_score": 0.24
-}
-```
-
-## Design notes
-- Point-level storage preserves sampling irregularities and makes signal analysis explicit.
-- PostGIS-native geometry enables accurate spatial analysis and indexing.
-- Metrics are interpretable and easy to extend into ML models.
-
-## Possible extensions (out of scope by design)
-- Sport-specific quality thresholds
-- Kalman or spline smoothing
-- Map matching to road graphs
-- Streaming ingestion
-- ML-based anomaly classification
+## Notes
+- The project is intentionally being rebuilt in increments, with working production behavior preserved at each step.
+- Current functionality is stable for ingestion and analytics; ML classifier components are being added iteratively.
