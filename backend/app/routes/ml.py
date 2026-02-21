@@ -3,8 +3,10 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.models.activity import Activity
+from app.models.activity_ml_feature import ActivityMLFeature
 from app.models.activity_quality_label import ActivityQualityLabel
 from app.schemas.ml_label import ActivityQualityLabelOut, ActivityQualityLabelUpsertIn
+from app.services.ml_features import FEATURE_VERSION_V1, build_activity_features
 
 router = APIRouter(prefix="/ml", tags=["ml"])
 
@@ -69,3 +71,51 @@ def list_labels(
         .offset(offset)
         .all()
     )
+
+
+@router.post("/features/rebuild")
+def rebuild_ml_features(
+    labeled_only: bool = Query(default=True),
+    limit: int | None = Query(default=None, ge=1, le=5000),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    q = db.query(Activity.id)
+    if labeled_only:
+        q = q.join(ActivityQualityLabel, ActivityQualityLabel.activity_id == Activity.id)
+
+    q = q.order_by(Activity.id.asc()).offset(offset)
+    if limit is not None:
+        q = q.limit(limit)
+    activity_ids = [row[0] for row in q.all()]
+
+    rebuilt = 0
+    skipped = 0
+    skipped_activity_ids: list[int] = []
+
+    for activity_id in activity_ids:
+        try:
+            build_activity_features(
+                db,
+                activity_id=activity_id,
+                feature_version=FEATURE_VERSION_V1,
+                persist=True,
+            )
+            rebuilt += 1
+        except ValueError:
+            skipped += 1
+            skipped_activity_ids.append(activity_id)
+
+    db.commit()
+    snapshots_in_db = db.query(ActivityMLFeature).count()
+
+    return {
+        "ok": True,
+        "feature_version": FEATURE_VERSION_V1,
+        "labeled_only": labeled_only,
+        "selected": len(activity_ids),
+        "rebuilt": rebuilt,
+        "skipped": skipped,
+        "skipped_activity_ids": skipped_activity_ids,
+        "snapshots_in_db": snapshots_in_db,
+    }

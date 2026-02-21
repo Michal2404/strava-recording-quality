@@ -5,6 +5,7 @@ from app.models.strava_token import StravaToken
 from app.models.activity_point import ActivityPoint
 from app.models.activity_quality_metric import ActivityQualityMetric
 from app.models.activity_quality_label import ActivityQualityLabel
+from app.models.activity_ml_feature import ActivityMLFeature
 
 __all__ = [
     "Base",
@@ -14,4 +15,5 @@ __all__ = [
     "ActivityPoint",
     "ActivityQualityMetric",
     "ActivityQualityLabel",
+    "ActivityMLFeature",
 ]

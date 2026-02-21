@@ -11,6 +11,7 @@ from app.models.activity import Activity
 from app.models.activity_point import ActivityPoint
 from app.models.strava_token import StravaToken
 from app.models.user import User
+from app.services.ml_features import build_activity_features
 from app.services.quality_metrics import (
     get_or_compute_quality_metric,
     upsert_quality_metric_from_series,
@@ -211,58 +212,12 @@ def activity_quality(activity_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{activity_id}/features")
 def activity_features(activity_id: int, db: Session = Depends(get_db)):
-    activity = db.query(Activity).filter(Activity.id == activity_id).one_or_none()
-    if not activity:
-        raise HTTPException(status_code=404, detail="Activity not found")
-
     try:
-        metric = get_or_compute_quality_metric(
-            db,
-            activity_id=activity_id,
-            commit_if_computed=True,
-        )
+        payload = build_activity_features(db, activity_id=activity_id, persist=True)
+        db.commit()
+    except LookupError:
+        raise HTTPException(status_code=404, detail="Activity not found")
     except ValueError as exc:
+        db.rollback()
         raise HTTPException(status_code=404, detail=str(exc))
-
-    official_distance_m = float(activity.distance_m) if activity.distance_m is not None else None
-    duration_s = metric.duration_s
-    gps_distance_m = metric.distance_m_gps
-
-    avg_speed_mps_gps = (gps_distance_m / duration_s) if duration_s > 0 else None
-    distance_ratio_gps_vs_official = (
-        gps_distance_m / official_distance_m
-        if official_distance_m is not None and official_distance_m > 0
-        else None
-    )
-    spikes_per_km = (metric.spike_count / (gps_distance_m / 1000.0)) if gps_distance_m > 0 else None
-    stopped_fraction = (metric.stopped_time_s / duration_s) if duration_s > 0 else None
-
-    return {
-        "activity_id": activity.id,
-        "strava_activity_id": activity.strava_activity_id,
-        "feature_version": 1,
-        "computed_at": metric.computed_at.isoformat() if metric.computed_at else None,
-        "metadata": {
-            "name": activity.name,
-            "sport_type": activity.sport_type,
-            "start_date": activity.start_date.isoformat() if activity.start_date else None,
-            "moving_time_s": activity.moving_time_s,
-            "distance_m_official": official_distance_m,
-            "elevation_gain_m": activity.elevation_gain_m,
-        },
-        "features": {
-            "point_count": metric.point_count,
-            "duration_s": duration_s,
-            "distance_m_gps": gps_distance_m,
-            "distance_ratio_gps_vs_official": distance_ratio_gps_vs_official,
-            "avg_speed_mps_gps": avg_speed_mps_gps,
-            "max_speed_mps": metric.max_speed_mps,
-            "max_speed_kmh": metric.max_speed_mps * 3.6,
-            "spike_count": metric.spike_count,
-            "spikes_per_km": spikes_per_km,
-            "stopped_time_s": metric.stopped_time_s,
-            "stopped_fraction": stopped_fraction,
-            "stop_segments": metric.stop_segments,
-            "jitter_score": metric.jitter_score,
-        },
-    }
+    return payload

@@ -70,6 +70,7 @@ def _truncate_tables(db: Session) -> None:
         text(
             """
             TRUNCATE TABLE
+              activity_ml_features,
               activity_quality_labels,
               activity_quality_metrics,
               activity_points,
