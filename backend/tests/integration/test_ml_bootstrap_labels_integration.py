@@ -100,7 +100,7 @@ def test_bootstrap_weak_labels_backfills_and_preserves_manual_labels(db_session,
         distance_m=10_000.0,
         name="Manual Protected",
     )
-    no_metric_activity = _seed_activity(
+    _seed_activity(
         db_session,
         user_id=user.id,
         strava_activity_id=920004,
@@ -218,4 +218,3 @@ def test_bootstrap_weak_labels_backfills_and_preserves_manual_labels(db_session,
     assert payload["ok"] is True
     assert payload["selected_activities"] == 5
     assert payload["class_balance"]["total"] == 3
-
