@@ -26,3 +26,6 @@ docs/local/
 
 # ec2 runtime env
 infra/ec2/.env.ec2
+
+# generated ml artifacts
+artifacts/ml/

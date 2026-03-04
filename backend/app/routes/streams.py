@@ -1,22 +1,22 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from geoalchemy2.functions import ST_X, ST_Y
-from geoalchemy2.shape import from_shape
-from shapely.geometry import Point
 from sqlalchemy import text
 
 
 from app.core.db import get_db
 from app.models.activity import Activity
 from app.models.activity_point import ActivityPoint
-from app.models.strava_token import StravaToken
-from app.models.user import User
 from app.services.ml_features import build_activity_features
 from app.services.quality_metrics import (
     get_or_compute_quality_metric,
-    upsert_quality_metric_from_series,
 )
-from app.services.strava_session import build_strava_client, persist_refreshed_token
+from app.services.stream_ingest import (
+    ActivityNotFoundError,
+    MissingStreamDataError,
+    MissingTokenError,
+    ingest_streams_for_activity,
+)
 
 router = APIRouter(prefix="/activities", tags=["streams"])
 
@@ -48,54 +48,22 @@ def ingest_activity_streams(
     activity_id: int,
     db: Session = Depends(get_db),
 ):
-    activity = db.query(Activity).filter(Activity.id == activity_id).one_or_none()
-    if not activity:
-        raise HTTPException(status_code=404, detail="Activity not found")
-
-    user = db.query(User).filter(User.id == activity.user_id).one()
-    token = db.query(StravaToken).filter(StravaToken.user_id == user.id).one()
-
-    client = build_strava_client(token)
-    streams = client.get_activity_streams(activity.strava_activity_id)
-    persist_refreshed_token(db, token, client, commit=True)
-
-    latlng = streams.get("latlng", {}).get("data")
-    times = streams.get("time", {}).get("data")
-    altitude = streams.get("altitude", {}).get("data")
-
-    if not latlng or not times:
-        raise HTTPException(status_code=400, detail="Missing latlng or time streams")
-
-    # Idempotency: delete existing points for this activity
-    db.query(ActivityPoint).filter(ActivityPoint.activity_id == activity.id).delete()
-
-    points = []
-    quality_latlons: list[tuple[float, float]] = []
-    quality_times: list[int] = []
-    for i, (coord, t) in enumerate(zip(latlng, times)):
-        lon, lat = coord[1], coord[0]
-
-        p = ActivityPoint(
-            activity_id=activity.id,
-            seq=i,
-            time_s=t,
-            geom=from_shape(Point(lon, lat), srid=4326),
-            ele_m=altitude[i] if altitude else None,
+    try:
+        result = ingest_streams_for_activity(
+            db,
+            activity_id=activity_id,
+            commit=True,
         )
-        points.append(p)
-        quality_latlons.append((lat, lon))
-        quality_times.append(int(t))
+    except ActivityNotFoundError:
+        raise HTTPException(status_code=404, detail="Activity not found")
+    except MissingTokenError as exc:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc))
+    except MissingStreamDataError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
 
-    db.bulk_save_objects(points)
-    upsert_quality_metric_from_series(
-        db,
-        activity_id=activity.id,
-        latlons=quality_latlons,
-        times=quality_times,
-    )
-    db.commit()
-
-    return {"ok": True, "points": len(points)}
+    return {"ok": True, "points": result.points}
 
 
 @router.get("/{activity_id}/track")

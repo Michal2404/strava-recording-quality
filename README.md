@@ -189,6 +189,15 @@ curl -X POST "http://127.0.0.1:8000/ml/activities/2/label" \
 curl "http://127.0.0.1:8000/ml/labels?label_bad=true&label_source=manual"
 ```
 
+### ML-04 weak-label bootstrap
+Run from `backend/`:
+```bash
+PYTHONPATH=. python -m app.ml.batch_ingest_streams --only-missing-metrics --sport-type Run --after 2023-01-01T00:00:00Z --before 2023-05-31T23:59:59Z
+PYTHONPATH=. python -m app.ml.bootstrap_labels
+```
+The first command writes `artifacts/ml/ingest_summary.json`.
+The second writes `artifacts/ml/bootstrap_summary.json` with class balance and top weak-label reasons.
+
 ## Testing
 
 Run from `backend/`.

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-import app.routes.streams as streams_route
+import app.services.stream_ingest as stream_ingest_service
 from app.models.activity import Activity
 from app.models.activity_point import ActivityPoint
 from app.models.activity_quality_metric import ActivityQualityMetric
@@ -68,12 +68,12 @@ def test_ingest_streams_persists_points_and_quality_metrics(api_client, db_sessi
     streams_payload = _fixture_streams_payload()
 
     monkeypatch.setattr(
-        streams_route,
+        stream_ingest_service,
         "build_strava_client",
         lambda token: FakeStravaClient(streams_payload),
     )
     monkeypatch.setattr(
-        streams_route,
+        stream_ingest_service,
         "persist_refreshed_token",
         lambda *args, **kwargs: False,
     )
@@ -104,12 +104,12 @@ def test_track_endpoint_returns_geojson_linestring(api_client, db_session, monke
     streams_payload = _fixture_streams_payload()
 
     monkeypatch.setattr(
-        streams_route,
+        stream_ingest_service,
         "build_strava_client",
         lambda token: FakeStravaClient(streams_payload),
     )
     monkeypatch.setattr(
-        streams_route,
+        stream_ingest_service,
         "persist_refreshed_token",
         lambda *args, **kwargs: False,
     )
@@ -134,12 +134,12 @@ def test_quality_endpoint_uses_persisted_metrics_when_points_are_missing(
     streams_payload = _fixture_streams_payload()
 
     monkeypatch.setattr(
-        streams_route,
+        stream_ingest_service,
         "build_strava_client",
         lambda token: FakeStravaClient(streams_payload),
     )
     monkeypatch.setattr(
-        streams_route,
+        stream_ingest_service,
         "persist_refreshed_token",
         lambda *args, **kwargs: False,
     )
