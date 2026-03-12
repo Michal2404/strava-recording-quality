@@ -29,8 +29,9 @@ def _seed_activity(db_session) -> Activity:
 
 
 @pytest.mark.integration
-def test_upsert_label_creates_and_lists(api_client, db_session):
+def test_upsert_label_creates_and_lists(api_client, db_session, authenticate_as):
     activity = _seed_activity(db_session)
+    authenticate_as(activity.user_id)
 
     create_payload = {
         "label_bad": True,
@@ -66,8 +67,9 @@ def test_upsert_label_creates_and_lists(api_client, db_session):
 
 
 @pytest.mark.integration
-def test_upsert_label_updates_existing_row(api_client, db_session):
+def test_upsert_label_updates_existing_row(api_client, db_session, authenticate_as):
     activity = _seed_activity(db_session)
+    authenticate_as(activity.user_id)
 
     first = api_client.post(
         f"/ml/activities/{activity.id}/label",
@@ -110,7 +112,17 @@ def test_upsert_label_updates_existing_row(api_client, db_session):
 
 
 @pytest.mark.integration
-def test_upsert_label_requires_existing_activity(api_client):
+def test_upsert_label_requires_existing_activity(api_client, db_session, authenticate_as):
+    user = User(
+        strava_athlete_id=777999,
+        firstname="Label",
+        lastname="Owner",
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    authenticate_as(user.id)
+
     response = api_client.post(
         "/ml/activities/99999/label",
         json={
@@ -123,8 +135,9 @@ def test_upsert_label_requires_existing_activity(api_client):
 
 
 @pytest.mark.integration
-def test_upsert_label_validates_source(api_client, db_session):
+def test_upsert_label_validates_source(api_client, db_session, authenticate_as):
     activity = _seed_activity(db_session)
+    authenticate_as(activity.user_id)
 
     response = api_client.post(
         f"/ml/activities/{activity.id}/label",

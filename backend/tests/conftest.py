@@ -22,9 +22,12 @@ os.environ.setdefault("STRAVA_CLIENT_ID", "test-client-id")
 os.environ.setdefault("STRAVA_CLIENT_SECRET", "test-client-secret")
 os.environ.setdefault("STRAVA_REDIRECT_URI", "http://127.0.0.1:8000/auth/strava/callback")
 os.environ.setdefault("STRAVA_SCOPES", "read,activity:read_all")
+os.environ.setdefault("SESSION_SECRET", "test-session-secret")
 
+from app.core.auth import get_current_user  # noqa: E402
 from app.core.db import get_db  # noqa: E402
 from app.main import app  # noqa: E402
+from app.models.user import User  # noqa: E402
 
 DEFAULT_TEST_DATABASE_URL = "postgresql+psycopg://app:app@localhost:5432/livemap_test"
 
@@ -143,3 +146,18 @@ def api_client(session_factory, clean_database) -> Generator[TestClient, None, N
             yield client
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.fixture()
+def authenticate_as(session_factory):
+    def _authenticate(user_id: int) -> None:
+        def override_get_current_user():
+            with session_factory() as db:
+                user = db.query(User).filter(User.id == user_id).one()
+                return user
+
+        app.dependency_overrides[get_current_user] = override_get_current_user
+
+    yield _authenticate
+
+    app.dependency_overrides.pop(get_current_user, None)

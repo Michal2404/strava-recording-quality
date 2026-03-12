@@ -63,8 +63,14 @@ def _ingest_for_activity(api_client, activity_id: int):
 
 
 @pytest.mark.integration
-def test_ingest_streams_persists_points_and_quality_metrics(api_client, db_session, monkeypatch):
+def test_ingest_streams_persists_points_and_quality_metrics(
+    api_client,
+    db_session,
+    monkeypatch,
+    authenticate_as,
+):
     activity = _seed_activity(db_session)
+    authenticate_as(activity.user_id)
     streams_payload = _fixture_streams_payload()
 
     monkeypatch.setattr(
@@ -99,8 +105,14 @@ def test_ingest_streams_persists_points_and_quality_metrics(api_client, db_sessi
 
 
 @pytest.mark.integration
-def test_track_endpoint_returns_geojson_linestring(api_client, db_session, monkeypatch):
+def test_track_endpoint_returns_geojson_linestring(
+    api_client,
+    db_session,
+    monkeypatch,
+    authenticate_as,
+):
     activity = _seed_activity(db_session)
+    authenticate_as(activity.user_id)
     streams_payload = _fixture_streams_payload()
 
     monkeypatch.setattr(
@@ -129,8 +141,10 @@ def test_quality_endpoint_uses_persisted_metrics_when_points_are_missing(
     api_client,
     db_session,
     monkeypatch,
+    authenticate_as,
 ):
     activity = _seed_activity(db_session)
+    authenticate_as(activity.user_id)
     streams_payload = _fixture_streams_payload()
 
     monkeypatch.setattr(

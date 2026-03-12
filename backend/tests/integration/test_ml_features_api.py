@@ -10,18 +10,30 @@ from app.models.activity_quality_metric import ActivityQualityMetric
 from app.models.user import User
 
 
-def _seed_activity(db_session, *, strava_activity_id: int, name: str) -> Activity:
+def _seed_user(db_session, *, athlete_id: int) -> User:
     user = User(
-        strava_athlete_id=strava_activity_id + 100_000,
+        strava_athlete_id=athlete_id,
         firstname="ML",
         lastname="Features",
     )
     db_session.add(user)
     db_session.flush()
+    return user
+
+
+def _seed_activity(
+    db_session,
+    *,
+    strava_activity_id: int,
+    name: str,
+    user_id: int | None = None,
+) -> Activity:
+    if user_id is None:
+        user_id = _seed_user(db_session, athlete_id=strava_activity_id + 100_000).id
 
     activity = Activity(
         strava_activity_id=strava_activity_id,
-        user_id=user.id,
+        user_id=user_id,
         name=name,
         sport_type="Run",
         distance_m=10_000.0,
@@ -55,8 +67,9 @@ def _seed_quality_metric(db_session, *, activity_id: int, jitter_score: float = 
 
 
 @pytest.mark.integration
-def test_activity_features_endpoint_persists_snapshot(api_client, db_session):
+def test_activity_features_endpoint_persists_snapshot(api_client, db_session, authenticate_as):
     activity = _seed_activity(db_session, strava_activity_id=810001, name="Feature Persist")
+    authenticate_as(activity.user_id)
     _seed_quality_metric(db_session, activity_id=activity.id)
 
     response = api_client.get(f"/activities/{activity.id}/features")
@@ -79,8 +92,9 @@ def test_activity_features_endpoint_persists_snapshot(api_client, db_session):
 
 
 @pytest.mark.integration
-def test_activity_features_endpoint_upserts_snapshot(api_client, db_session):
+def test_activity_features_endpoint_upserts_snapshot(api_client, db_session, authenticate_as):
     activity = _seed_activity(db_session, strava_activity_id=810002, name="Feature Upsert")
+    authenticate_as(activity.user_id)
     _seed_quality_metric(db_session, activity_id=activity.id, jitter_score=0.10)
 
     first = api_client.get(f"/activities/{activity.id}/features")
@@ -109,9 +123,25 @@ def test_activity_features_endpoint_upserts_snapshot(api_client, db_session):
 
 
 @pytest.mark.integration
-def test_rebuild_ml_features_defaults_to_labeled_only(api_client, db_session):
-    labeled_activity = _seed_activity(db_session, strava_activity_id=810003, name="Labeled")
-    unlabeled_activity = _seed_activity(db_session, strava_activity_id=810004, name="Unlabeled")
+def test_rebuild_ml_features_defaults_to_labeled_only(
+    api_client,
+    db_session,
+    authenticate_as,
+):
+    user = _seed_user(db_session, athlete_id=910003)
+    authenticate_as(user.id)
+    labeled_activity = _seed_activity(
+        db_session,
+        strava_activity_id=810003,
+        name="Labeled",
+        user_id=user.id,
+    )
+    unlabeled_activity = _seed_activity(
+        db_session,
+        strava_activity_id=810004,
+        name="Unlabeled",
+        user_id=user.id,
+    )
     _seed_quality_metric(db_session, activity_id=labeled_activity.id)
     _seed_quality_metric(db_session, activity_id=unlabeled_activity.id)
 
@@ -141,9 +171,25 @@ def test_rebuild_ml_features_defaults_to_labeled_only(api_client, db_session):
 
 
 @pytest.mark.integration
-def test_rebuild_ml_features_supports_all_activities_and_skips_missing_data(api_client, db_session):
-    with_metric = _seed_activity(db_session, strava_activity_id=810005, name="With metric")
-    without_metric = _seed_activity(db_session, strava_activity_id=810006, name="Without metric")
+def test_rebuild_ml_features_supports_all_activities_and_skips_missing_data(
+    api_client,
+    db_session,
+    authenticate_as,
+):
+    user = _seed_user(db_session, athlete_id=910005)
+    authenticate_as(user.id)
+    with_metric = _seed_activity(
+        db_session,
+        strava_activity_id=810005,
+        name="With metric",
+        user_id=user.id,
+    )
+    without_metric = _seed_activity(
+        db_session,
+        strava_activity_id=810006,
+        name="Without metric",
+        user_id=user.id,
+    )
     _seed_quality_metric(db_session, activity_id=with_metric.id)
 
     rebuild = api_client.post("/ml/features/rebuild?labeled_only=false")
