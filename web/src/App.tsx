@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import type { Feature, GeoJsonObject, LineString } from 'geojson'
 import L from 'leaflet'
 import { GeoJSON, MapContainer, TileLayer, useMap } from 'react-leaflet'
@@ -51,6 +51,15 @@ type SyncResult = {
   pages: number
 }
 
+type AuthenticatedUser = {
+  id: number
+  strava_athlete_id: number
+  firstname?: string | null
+  lastname?: string | null
+}
+
+type AuthStatus = 'checking' | 'authenticated' | 'unauthenticated'
+
 const API_BASE = import.meta.env.VITE_API_BASE ?? ''
 
 const formatDuration = (totalSeconds?: number | null) => {
@@ -72,6 +81,12 @@ const formatDate = (value?: string | null) => {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString()
+}
+
+const getViewerName = (viewer: AuthenticatedUser | null) => {
+  if (!viewer) return 'Unknown athlete'
+  const fullName = [viewer.firstname, viewer.lastname].filter(Boolean).join(' ').trim()
+  return fullName || `Athlete #${viewer.strava_athlete_id}`
 }
 
 class ApiError extends Error {
@@ -96,6 +111,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
+    credentials: init?.credentials ?? 'include',
     headers,
   })
 
@@ -108,6 +124,10 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
       // ignore parsing errors
     }
     throw new ApiError(detail, response.status)
+  }
+
+  if (response.status === 204) {
+    return undefined as T
   }
 
   return (await response.json()) as T
@@ -129,6 +149,9 @@ function FitBounds({ feature }: { feature: TrackFeature | null }) {
 }
 
 function App() {
+  const [authStatus, setAuthStatus] = useState<AuthStatus>('checking')
+  const [viewer, setViewer] = useState<AuthenticatedUser | null>(null)
+  const [authMessage, setAuthMessage] = useState<string | null>(null)
   const [activities, setActivities] = useState<Activity[]>([])
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [listLoading, setListLoading] = useState(false)
@@ -152,6 +175,51 @@ function App() {
     [activities, selectedId],
   )
 
+  const resetDashboardState = () => {
+    setActivities([])
+    setSelectedId(null)
+    setListLoading(false)
+    setSyncing(false)
+    setIngesting(false)
+    setTrack(null)
+    setQuality(null)
+    setTrackError(null)
+    setQualityError(null)
+    setDetailLoading(false)
+    setMessage(null)
+    autoIngestedIds.current.clear()
+  }
+
+  const handleUnauthorized = (error: unknown, nextMessage?: string) => {
+    if (!(error instanceof ApiError) || error.status !== 401) {
+      return false
+    }
+
+    resetDashboardState()
+    setViewer(null)
+    setAuthStatus('unauthenticated')
+    setAuthMessage(nextMessage ?? 'Your session expired. Sign in with Strava again.')
+    return true
+  }
+
+  const loadSession = async () => {
+    try {
+      const currentViewer = await apiFetch<AuthenticatedUser>('/auth/strava/me')
+      setViewer(currentViewer)
+      setAuthStatus('authenticated')
+      setAuthMessage(null)
+    } catch (error) {
+      resetDashboardState()
+      setViewer(null)
+      setAuthStatus('unauthenticated')
+      if (error instanceof ApiError && error.status === 401) {
+        setAuthMessage(null)
+        return
+      }
+      setAuthMessage(`Could not verify your session. ${getErrorMessage(error)}`)
+    }
+  }
+
   const loadActivities = async (options?: { preserveMessage?: boolean }) => {
     setListLoading(true)
     if (!options?.preserveMessage) {
@@ -171,6 +239,9 @@ function App() {
         return data[0]?.id ?? null
       })
     } catch (error) {
+      if (handleUnauthorized(error)) {
+        return
+      }
       setMessage(`Could not load activities. ${getErrorMessage(error)}`)
     } finally {
       setListLoading(false)
@@ -192,6 +263,19 @@ function App() {
       apiFetch<QualityReport>(`/activities/${activityId}/quality`),
     ])
 
+    const unauthorizedError =
+      (trackResult.status === 'rejected' && trackResult.reason instanceof ApiError
+        ? trackResult.reason
+        : null) ??
+      (qualityResult.status === 'rejected' && qualityResult.reason instanceof ApiError
+        ? qualityResult.reason
+        : null)
+
+    if (unauthorizedError?.status === 401) {
+      handleUnauthorized(unauthorizedError)
+      return
+    }
+
     const isMissingPoints = (error: unknown) =>
       error instanceof ApiError &&
       error.status === 404 &&
@@ -211,6 +295,9 @@ function App() {
         )
         setMessage('Streams ingested automatically.')
       } catch (error) {
+        if (handleUnauthorized(error)) {
+          return
+        }
         setMessage(`Auto-ingest failed. ${getErrorMessage(error)}`)
       }
       await loadDetails(activityId, { skipAutoIngest: true })
@@ -266,6 +353,9 @@ function App() {
       )
       await loadActivities({ preserveMessage: true })
     } catch (error) {
+      if (handleUnauthorized(error)) {
+        return
+      }
       setMessage(`Sync failed. ${getErrorMessage(error)}`)
     } finally {
       setSyncing(false)
@@ -284,20 +374,87 @@ function App() {
       setMessage('Streams ingested. Loading track and quality…')
       await loadDetails(selectedId)
     } catch (error) {
+      if (handleUnauthorized(error)) {
+        return
+      }
       setMessage(`Ingest failed. ${getErrorMessage(error)}`)
     } finally {
       setIngesting(false)
     }
   }
 
-  useEffect(() => {
+  const handleLogout = async () => {
+    try {
+      await apiFetch<void>('/auth/strava/logout', { method: 'POST' })
+      resetDashboardState()
+      setViewer(null)
+      setAuthStatus('unauthenticated')
+      setAuthMessage(null)
+    } catch (error) {
+      setMessage(`Could not sign out. ${getErrorMessage(error)}`)
+    }
+  }
+
+  const syncSessionEffect = useEffectEvent(() => {
+    void loadSession()
+  })
+
+  const syncActivitiesEffect = useEffectEvent(() => {
     void loadActivities()
-  }, [onlyRuns])
+  })
+
+  const syncDetailsEffect = useEffectEvent((activityId: number) => {
+    void loadDetails(activityId)
+  })
 
   useEffect(() => {
-    if (!selectedId) return
-    void loadDetails(selectedId)
-  }, [selectedId])
+    syncSessionEffect()
+  }, [])
+
+  useEffect(() => {
+    if (authStatus !== 'authenticated') return
+    syncActivitiesEffect()
+  }, [authStatus, onlyRuns])
+
+  useEffect(() => {
+    if (authStatus !== 'authenticated' || !selectedId) return
+    syncDetailsEffect(selectedId)
+  }, [authStatus, selectedId])
+
+  if (authStatus === 'checking') {
+    return (
+      <div className="auth-shell">
+        <section className="auth-card">
+          <div className="eyebrow">Strava Recording Quality</div>
+          <h1>Checking your session…</h1>
+          <p>
+            The dashboard stays locked until the API confirms an authenticated
+            Strava session.
+          </p>
+        </section>
+      </div>
+    )
+  }
+
+  if (authStatus !== 'authenticated' || !viewer) {
+    return (
+      <div className="auth-shell">
+        <section className="auth-card">
+          <div className="eyebrow">Private Analytics</div>
+          <h1>Authenticate before loading activity data.</h1>
+          <p>
+            This platform only renders your Strava analytics after a successful
+            sign-in. Unauthenticated visitors cannot browse synced activities or
+            quality metrics.
+          </p>
+          {authMessage && <div className="notice danger">{authMessage}</div>}
+          <a className="btn primary" href="/auth/strava/login">
+            Continue with Strava
+          </a>
+        </section>
+      </div>
+    )
+  }
 
   return (
     <div className="app">
@@ -311,9 +468,19 @@ function App() {
           </p>
         </div>
         <div className="actions">
-          <a className="btn ghost" href="/auth/strava/login">
-            Connect with Strava
-          </a>
+          <div className="viewer-card">
+            <span className="viewer-label">Signed in</span>
+            <strong>{getViewerName(viewer)}</strong>
+            <span className="viewer-meta">Athlete #{viewer.strava_athlete_id}</span>
+          </div>
+          <div className="session-actions">
+            <a className="btn ghost" href="/auth/strava/login">
+              Reconnect Strava
+            </a>
+            <button className="btn ghost" onClick={() => void handleLogout()}>
+              Sign out
+            </button>
+          </div>
           <div className="sync-group">
             <label htmlFor="per-page">Per page</label>
             <input
@@ -401,7 +568,7 @@ function App() {
             {activities.length === 0 && !listLoading ? (
               <div className="empty-state">
                 <strong>No activities yet.</strong>
-                <span>Connect with Strava, then sync to pull recent workouts.</span>
+                <span>Sync after connecting to pull your latest workouts.</span>
               </div>
             ) : (
               activities.map((activity) => (

@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     STRAVA_REDIRECT_URI: str
     STRAVA_SCOPES: str = "read,activity:read_all"
     AUTH_SUCCESS_REDIRECT_URL: str = "/"
+    SESSION_SECRET: str = "dev-session-secret-change-me"
+    SESSION_COOKIE_NAME: str = "srq_session"
+    SESSION_COOKIE_SECURE: bool = False
+    SESSION_MAX_AGE_SECONDS: int = 60 * 60 * 24 * 30
 
     # Observability
     LOG_LEVEL: str = "INFO"

@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user, get_user_activity_or_404
 from app.core.db import get_db
 from app.models.activity import Activity
 from app.models.activity_ml_feature import ActivityMLFeature
 from app.models.activity_quality_label import ActivityQualityLabel
+from app.models.user import User
 from app.schemas.ml_label import ActivityQualityLabelOut, ActivityQualityLabelUpsertIn
 from app.services.ml_features import FEATURE_VERSION_V1, build_activity_features
 
@@ -18,10 +20,9 @@ def upsert_activity_label(
     activity_id: int,
     payload: ActivityQualityLabelUpsertIn,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    activity = db.query(Activity).filter(Activity.id == activity_id).one_or_none()
-    if activity is None:
-        raise HTTPException(status_code=404, detail="Activity not found")
+    get_user_activity_or_404(db, current_user=current_user, activity_id=activity_id)
 
     if payload.label_source not in ALLOWED_LABEL_SOURCES:
         allowed = ", ".join(sorted(ALLOWED_LABEL_SOURCES))
@@ -56,8 +57,10 @@ def list_labels(
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    q = db.query(ActivityQualityLabel)
+    q = db.query(ActivityQualityLabel).join(Activity, Activity.id == ActivityQualityLabel.activity_id)
+    q = q.filter(Activity.user_id == current_user.id)
     if label_bad is not None:
         q = q.filter(ActivityQualityLabel.label_bad == label_bad)
     if label_source is not None:
@@ -79,8 +82,9 @@ def rebuild_ml_features(
     limit: int | None = Query(default=None, ge=1, le=5000),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    q = db.query(Activity.id)
+    q = db.query(Activity.id).filter(Activity.user_id == current_user.id)
     if labeled_only:
         q = q.join(ActivityQualityLabel, ActivityQualityLabel.activity_id == Activity.id)
 
@@ -107,7 +111,12 @@ def rebuild_ml_features(
             skipped_activity_ids.append(activity_id)
 
     db.commit()
-    snapshots_in_db = db.query(ActivityMLFeature).count()
+    snapshots_in_db = (
+        db.query(ActivityMLFeature)
+        .join(Activity, Activity.id == ActivityMLFeature.activity_id)
+        .filter(Activity.user_id == current_user.id)
+        .count()
+    )
 
     return {
         "ok": True,

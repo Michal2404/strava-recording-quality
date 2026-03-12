@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.core.auth import get_current_user
 from app.core.db import get_db
 from app.models.activity import Activity
 from app.models.strava_token import StravaToken
@@ -31,6 +32,7 @@ def to_unix_timestamp(value: datetime | None) -> int | None:
 @router.post("/activities")
 def sync_activities(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     per_page: int = Query(30, ge=1, le=200),
     max_pages: int | None = Query(default=None, ge=1, le=5000),
     after: datetime | None = None,
@@ -41,12 +43,7 @@ def sync_activities(
     if after and before and after >= before:
         raise HTTPException(status_code=400, detail="'after' must be earlier than 'before'")
 
-    # Single-user mode: select the first user.
-    user = db.query(User).order_by(User.id.asc()).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="No user found. Login with Strava first.")
-
-    token = db.query(StravaToken).filter(StravaToken.user_id == user.id).one_or_none()
+    token = db.query(StravaToken).filter(StravaToken.user_id == current_user.id).one_or_none()
     if not token:
         raise HTTPException(status_code=404, detail="No Strava token found. Login with Strava first.")
 
@@ -97,9 +94,16 @@ def sync_activities(
                 skipped += 1
                 continue
 
-            activity = db.query(Activity).filter(Activity.strava_activity_id == strava_id).one_or_none()
+            activity = (
+                db.query(Activity)
+                .filter(
+                    Activity.strava_activity_id == strava_id,
+                    Activity.user_id == current_user.id,
+                )
+                .one_or_none()
+            )
             if activity is None:
-                activity = Activity(strava_activity_id=strava_id, user_id=user.id)
+                activity = Activity(strava_activity_id=strava_id, user_id=current_user.id)
                 db.add(activity)
                 inserted += 1
             else:

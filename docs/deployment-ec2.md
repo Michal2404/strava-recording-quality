@@ -48,6 +48,7 @@ Edit `infra/ec2/.env.ec2`:
 - `STRAVA_CLIENT_ID`
 - `STRAVA_CLIENT_SECRET`
 - `STRAVA_REDIRECT_URI` (must be HTTPS domain callback, e.g. `https://api.example.com/auth/strava/callback`)
+- `SESSION_SECRET` (long random value for signed browser sessions)
 
 Also update Strava developer app settings:
 - Authorization Callback Domain: your API domain (for example `api.example.com`)

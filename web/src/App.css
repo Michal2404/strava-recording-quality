@@ -6,6 +6,39 @@
   gap: 20px;
 }
 
+.auth-shell {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.auth-card {
+  width: min(100%, 560px);
+  background: linear-gradient(180deg, rgba(15, 22, 30, 0.94), rgba(10, 15, 22, 0.9));
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  padding: 32px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.auth-card h1 {
+  margin: 0;
+  font-family: "Sora", system-ui, sans-serif;
+  font-size: clamp(30px, 6vw, 44px);
+  line-height: 1.05;
+}
+
+.auth-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  max-width: 46ch;
+}
+
 .topbar {
   display: flex;
   align-items: flex-end;
@@ -38,6 +71,34 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 12px;
+}
+
+.viewer-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.viewer-label {
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.viewer-card strong {
+  font-size: 15px;
+}
+
+.viewer-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.session-actions {
+  display: flex;
+  gap: 10px;
 }
 
 .sync-group {
@@ -334,6 +395,11 @@
   font-size: 12px;
 }
 
+.notice.danger {
+  background: rgba(255, 107, 107, 0.12);
+  border-color: rgba(255, 107, 107, 0.35);
+}
+
 .chip {
   font-size: 11px;
   padding: 4px 10px;
@@ -382,6 +448,10 @@
   .actions {
     align-items: flex-start;
   }
+
+  .viewer-card {
+    align-items: flex-start;
+  }
 }
 
 @media (max-width: 720px) {
@@ -397,5 +467,15 @@
   .sync-group {
     flex-wrap: wrap;
     width: 100%;
+  }
+
+  .auth-card {
+    padding: 24px;
+    border-radius: 22px;
+  }
+
+  .session-actions {
+    width: 100%;
+    flex-wrap: wrap;
   }
 }

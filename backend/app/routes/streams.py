@@ -3,10 +3,11 @@ from sqlalchemy.orm import Session
 from geoalchemy2.functions import ST_X, ST_Y
 from sqlalchemy import text
 
-
+from app.core.auth import get_current_user, get_user_activity_or_404
 from app.core.db import get_db
 from app.models.activity import Activity
 from app.models.activity_point import ActivityPoint
+from app.models.user import User
 from app.services.ml_features import build_activity_features
 from app.services.quality_metrics import (
     get_or_compute_quality_metric,
@@ -47,7 +48,10 @@ def _quality_payload(activity: Activity, metric) -> dict:
 def ingest_activity_streams(
     activity_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    get_user_activity_or_404(db, current_user=current_user, activity_id=activity_id)
+
     try:
         result = ingest_streams_for_activity(
             db,
@@ -67,10 +71,12 @@ def ingest_activity_streams(
 
 
 @router.get("/{activity_id}/track")
-def get_activity_track(activity_id: int, db: Session = Depends(get_db)):
-    activity = db.query(Activity).filter(Activity.id == activity_id).one_or_none()
-    if not activity:
-        raise HTTPException(status_code=404, detail="Activity not found")
+def get_activity_track(
+    activity_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    activity = get_user_activity_or_404(db, current_user=current_user, activity_id=activity_id)
 
     # Ensure points exist
     count = db.query(ActivityPoint).filter(ActivityPoint.activity_id == activity_id).count()
@@ -106,10 +112,12 @@ def get_activity_track(activity_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{activity_id}/points.geojson")
-def get_activity_points_geojson(activity_id: int, db: Session = Depends(get_db)):
-    activity = db.query(Activity).filter(Activity.id == activity_id).one_or_none()
-    if not activity:
-        raise HTTPException(status_code=404, detail="Activity not found")
+def get_activity_points_geojson(
+    activity_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    activity = get_user_activity_or_404(db, current_user=current_user, activity_id=activity_id)
 
     rows = (
         db.query(
@@ -160,11 +168,12 @@ def get_activity_points_geojson(activity_id: int, db: Session = Depends(get_db))
 
 
 @router.get("/{activity_id}/quality")
-def activity_quality(activity_id: int, db: Session = Depends(get_db)):
-    # Ensure activity exists.
-    activity = db.query(Activity).filter(Activity.id == activity_id).one_or_none()
-    if not activity:
-        raise HTTPException(status_code=404, detail="Activity not found")
+def activity_quality(
+    activity_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    activity = get_user_activity_or_404(db, current_user=current_user, activity_id=activity_id)
 
     try:
         metric = get_or_compute_quality_metric(
@@ -179,7 +188,13 @@ def activity_quality(activity_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{activity_id}/features")
-def activity_features(activity_id: int, db: Session = Depends(get_db)):
+def activity_features(
+    activity_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    get_user_activity_or_404(db, current_user=current_user, activity_id=activity_id)
+
     try:
         payload = build_activity_features(db, activity_id=activity_id, persist=True)
         db.commit()
